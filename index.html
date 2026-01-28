@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>GeoJSON to Table - Bootstrap</title>
+
+    <!-- Bootstrap 5 -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+
+    <style>
+      tr.stop-row td {
+        background-color: #DC4C64 !important;
+      }
+    </style>
+  </head>
+  <body class="bg-light">
+    <div class="container py-4">
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h4 class="mb-3">Masukkan Data GeoJSON</h4>
+
+          <textarea id="jsonInput" class="form-control" rows="12">
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "coordinates": [
+          [112.75988923982305, -7.331356468237928],
+          [112.75991116940213, -7.331051963943892]
+        ],
+        "type": "LineString"
+      }
+    }
+  ]
+}
+          </textarea>
+
+          <div class="row mt-3">
+            <div class="col-md-3">
+              <label class="form-label">Plat Nomor</label>
+              <div class="input-group">
+                <input
+                  type="text"
+                  id="licensePlate"
+                  class="form-control"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="row mt-3">
+            <div class="col-md-3">
+              <label class="form-label">Second</label>
+              <div class="input-group">
+                <input
+                  type="number"
+                  id="second"
+                  class="form-control"
+                  value="10"
+                />
+                <button class="btn btn-warning" onclick="regenerateSecond()">
+                  Generate
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="row mt-3">
+            <div class="col-md-3">
+              <label class="form-label">Minimal Speed</label>
+              <input
+                type="number"
+                id="minSpeed"
+                class="form-control"
+                value="0"
+              />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Maksimal Speed</label>
+              <input
+                type="number"
+                id="maxSpeed"
+                class="form-control"
+                value="120"
+              />
+            </div>
+          </div>
+
+          <div class="row mt-3">
+            <div class="col-md-3">
+              <label class="form-label">Minimal Temperature 1</label>
+              <input
+                type="number"
+                id="minTemp1"
+                class="form-control"
+                value="0"
+              />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Maksimal Temperature 1</label>
+              <input
+                type="number"
+                id="maxTemp1"
+                class="form-control"
+                value="0"
+              />
+            </div>
+          </div>
+
+          <div class="row mt-3">
+            <div class="col-md-3">
+              <label class="form-label">Minimal Temperature 2</label>
+              <input
+                type="number"
+                id="minTemp2"
+                class="form-control"
+                value="0"
+              />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Maksimal Temperature 2</label>
+              <input
+                type="number"
+                id="maxTemp2"
+                class="form-control"
+                value="0"
+              />
+            </div>
+          </div>
+
+          <button class="btn btn-primary mt-3" onclick="convertToTable()">
+            Tampilkan Tabel Koordinat
+          </button>
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h4>Hasil Tabel Koordinat</h4>
+            <button class="btn btn-sm btn-success" onclick="exportToTxt()">
+              Export TXT
+            </button>
+          </div>
+          <div id="result" class="table-responsive mt-3"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function convertToTable() {
+        const jsonText = document.getElementById("jsonInput").value;
+        let data;
+
+        try {
+          data = JSON.parse(jsonText);
+        } catch (e) {
+          alert("JSON tidak valid!");
+          return;
+        }
+
+        const second = parseInt(document.getElementById("second").value);
+        const minSpeed = parseInt(document.getElementById("minSpeed").value);
+        const maxSpeed = parseInt(document.getElementById("maxSpeed").value);
+        const minTemp1 = parseInt(document.getElementById("minTemp1").value);
+        const maxTemp1 = parseInt(document.getElementById("maxTemp1").value);
+        const minTemp2 = parseInt(document.getElementById("minTemp2").value);
+        const maxTemp2 = parseInt(document.getElementById("maxTemp2").value);
+
+        if (isNaN(minSpeed) || isNaN(maxSpeed) || minSpeed > maxSpeed) {
+          alert("Range speed tidak valid! Pastikan minimal ≤ maksimal.");
+          return;
+        }
+
+        const coordinates = data?.features?.[0]?.geometry?.coordinates || [];
+
+        let html = `
+      <table class="table table-bordered table-striped">
+        <thead class="table-light">
+          <tr>
+            <th>No</th>
+            <th>Second</th>
+            <th>Latitude</th>
+            <th>Longitude</th>
+            <th>Satellites</th>
+            <th>Speed</th>
+            <th>ACC</th>
+            <th>DIGITALINPUT2</th>
+            <th>DALLASTEMPERATURE1</th>
+            <th>DALLASTEMPERATURE2</th>
+            <th>Set</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+        let interval = 0;
+        coordinates.forEach((item, index) => {
+          const lon = item[0];
+          const lat = item[1];
+
+          let satellites = 15;
+          let speed;
+          let acc;
+
+          const temp1 =
+            Math.floor(Math.random() * (maxTemp1 - minTemp1 + 1)) + minTemp1;
+          const temp2 =
+            Math.floor(Math.random() * (maxTemp2 - minTemp2 + 1)) + minTemp2;
+
+          if (index === 0) {
+            interval = 0;
+            speed = 0;
+            acc = 0;
+          } else {
+            interval += second;
+            speed =
+              Math.floor(Math.random() * (maxSpeed - minSpeed + 1)) + minSpeed;
+            acc = 1;
+          }
+
+          html += `
+    <tr>
+      <td class="no">${index + 1}</td>
+
+      <td><input type="number" class="form-control form-control-sm second-input" value="${interval}"></td>
+
+      <td class="lat">${lat}</td>
+      <td class="lon">${lon}</td>
+
+      <td class="sat">${satellites}</td>
+
+      <td><input type="number" class="form-control form-control-sm speed-input" value="${speed}"></td>
+
+      <td>
+        <select class="form-select form-select-sm acc-input">
+          <option value="1" ${acc === 1 ? "selected" : ""}>1</option>
+          <option value="0" ${acc === 0 ? "selected" : ""}>0</option>
+        </select>
+      </td>
+
+      <td>
+        <select class="form-select form-select-sm digital-input">
+          <option value="1" ${acc === 1 ? "selected" : ""}>1</option>
+          <option value="0" ${acc === 0 ? "selected" : ""}>0</option>
+        </select>
+      </td>
+
+      <td><input type="number" class="form-control form-control-sm temp1-input" value="${temp1}"></td>
+      <td><input type="number" class="form-control form-control-sm temp2-input" value="${temp2}"></td>
+
+      <td>
+  <select class="form-select form-select-sm set-select" onchange="handleSetAction(this)">
+    <option value="">-- Pilih --</option>
+    <option value="duplicate">Duplicate</option>
+    <option value="delete">Delete</option>
+    <option value="stop">Berhenti</option>
+  </select>
+</td>
+    </tr>
+  `;
+        });
+
+        html += `
+        </tbody>
+      </table>
+    `;
+
+        document.getElementById("result").innerHTML = html;
+      }
+
+      function handleSetAction(el) {
+        const action = el.value;
+        if (!action) return;
+
+        if (action === "duplicate") {
+          duplicateRow(el);
+        } else if (action === "delete") {
+          deleteRow(el);
+        } else if (action === "stop") {
+          stopRow(el);
+        }
+
+        el.value = "";
+      }
+
+      function duplicateRow(el) {
+        if (el.value !== "duplicate") return;
+
+        const row = el.closest("tr");
+        const clone = row.cloneNode(true);
+
+        clone.querySelector(".set-select").value = "";
+
+        row.parentNode.insertBefore(clone, row.nextSibling);
+
+        updateRowNumbers();
+
+        // ⬅️ Tambahkan ini
+        recalculateSeconds();
+      }
+
+      function deleteRow(el) {
+        const row = el.closest("tr");
+        const tbody = row.parentNode;
+
+        const totalRows = tbody.querySelectorAll("tr").length;
+
+        if (totalRows <= 1) {
+          alert("Minimal harus ada 1 baris!");
+          return;
+        }
+
+        row.remove();
+        updateRowNumbers();
+        recalculateSeconds();
+      }
+
+      function updateRowNumbers() {
+        const rows = document.querySelectorAll("#result table tbody tr");
+        rows.forEach((row, index) => {
+          row.querySelector(".no").innerText = index + 1;
+        });
+      }
+
+      function regenerateSecond() {
+        const interval = parseInt(document.getElementById("second").value);
+
+        if (isNaN(interval) || interval < 0) {
+          alert("Interval second tidak valid!");
+          return;
+        }
+
+        const rows = document.querySelectorAll("#result table tbody tr");
+
+        let currentSecond = 0;
+        rows.forEach((row, index) => {
+          const secondInput = row.querySelector(".second-input");
+
+          if (index === 0) {
+            currentSecond = 0;
+          } else {
+            currentSecond = interval * index;
+          }
+
+          secondInput.value = currentSecond;
+        });
+      }
+
+      function stopRow(el) {
+        const row = el.closest("tr");
+        const tbody = row.parentNode;
+
+        const secondInterval = parseInt(
+          document.getElementById("second").value
+        );
+        if (isNaN(secondInterval)) {
+          alert("Second interval tidak valid!");
+          return;
+        }
+
+        const originalSecond =
+          parseInt(row.querySelector(".second-input").value) || 0;
+        const lat = row.querySelector(".lat").innerText;
+        const lon = row.querySelector(".lon").innerText;
+
+        const nextSibling = row.nextSibling;
+        row.remove();
+
+        const second1 = originalSecond;
+        const second2 = originalSecond + 120;
+        const second3 = second2 + secondInterval;
+
+        const row1 = createStopRow(second1, lat, lon, 0, 1);
+        const row2 = createStopRow(second2, lat, lon, 0, 0);
+        const row3 = createStopRow(second3, lat, lon, 0, 1);
+
+        // Sisipkan 3 baris di posisi yang tepat
+        if (nextSibling) {
+          tbody.insertBefore(row3, nextSibling);
+          tbody.insertBefore(row2, row3);
+          tbody.insertBefore(row1, row2);
+        } else {
+          tbody.appendChild(row1);
+          tbody.appendChild(row2);
+          tbody.appendChild(row3);
+        }
+
+        updateRowNumbers();
+        recalculateSeconds(); // <── penting!
+      }
+
+      function recalculateSeconds() {
+        const interval = parseInt(document.getElementById("second").value);
+        if (isNaN(interval)) return;
+
+        const rows = document.querySelectorAll("#result table tbody tr");
+        let lastSecond = null;
+
+        rows.forEach((row, index) => {
+          const secInput = row.querySelector(".second-input");
+
+          // Jika baris STOP → biarkan detik apa adanya
+          if (row.classList.contains("stop-row")) {
+            lastSecond = parseInt(secInput.value);
+            return;
+          }
+
+          // Baris pertama
+          if (lastSecond === null) {
+            lastSecond = parseInt(secInput.value);
+            return;
+          }
+
+          // Baris normal → pakai interval
+          lastSecond = lastSecond + interval;
+          secInput.value = lastSecond;
+        });
+      }
+
+      function createStopRow(secondValue, lat, lon, speed, acc) {
+        const tr = document.createElement("tr");
+
+        tr.classList.add("stop-row");
+
+        tr.innerHTML = `
+    <td class="no"></td>
+
+    <td><input type="number" class="form-control form-control-sm second-input" value="${secondValue}"></td>
+
+    <td class="lat">${lat}</td>
+    <td class="lon">${lon}</td>
+
+    <td class="sat">15</td>
+
+    <td><input type="number" class="form-control form-control-sm speed-input" value="${speed}"></td>
+
+    <td>
+      <select class="form-select form-select-sm acc-input">
+        <option value="1" ${acc === 1 ? "selected" : ""}>1</option>
+        <option value="0" ${acc === 0 ? "selected" : ""}>0</option>
+      </select>
+    </td>
+
+    <td>
+      <select class="form-select form-select-sm digital-input">
+        <option value="1" ${acc === 1 ? "selected" : ""}>1</option>
+        <option value="0" ${acc === 0 ? "selected" : ""}>0</option>
+      </select>
+    </td>
+
+    <td><input type="number" class="form-control form-control-sm temp1-input" value="0"></td>
+    <td><input type="number" class="form-control form-control-sm temp2-input" value="0"></td>
+
+    <td>
+      <select class="form-select form-select-sm set-select" onchange="handleSetAction(this)">
+        <option value="">-- Pilih --</option>
+        <option value="duplicate">Duplikat</option>
+        <option value="delete">Hapus</option>
+        <option value="stop">Berhenti</option>
+      </select>
+    </td>
+  `;
+
+        return tr;
+      }
+
+      function exportToTxt() {
+        const rows = document.querySelectorAll("#result table tbody tr");
+        if (rows.length === 0) {
+          alert("Tidak ada data untuk diexport!");
+          return;
+        }
+
+        // Ambil plat nomor
+        const plate = document.getElementById("licensePlate").value.trim();
+        const plateSafe =
+          plate !== "" ? plate.replace(/[^a-zA-Z0-9\-]/g, "") : "NO-LICENSE-PLATE";
+
+        let content =
+          "second,Longitude,Latitude,Satellites,Speed,acc,digitalInput2,dallasTemperature1,dallasTemperature2\n";
+
+        rows.forEach((row) => {
+          const second = row.querySelector(".second-input").value;
+          const lon = row.querySelector(".lon").innerText;
+          const lat = row.querySelector(".lat").innerText;
+          const sat = row.querySelector(".sat").innerText;
+          const speed = row.querySelector(".speed-input").value;
+          const acc = row.querySelector(".acc-input").value;
+          const digital = row.querySelector(".digital-input").value;
+          const temp1 = row.querySelector(".temp1-input").value;
+          const temp2 = row.querySelector(".temp2-input").value;
+
+          content += `${second},${lon},${lat},${sat},${speed},${acc},${digital},${temp1},${temp2}\n`;
+        });
+
+        const blob = new Blob([content], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `RUN-${plateSafe}.txt`; // <── Nama file sesuai plat nomor
+        a.click();
+
+        URL.revokeObjectURL(url);
+      }
+    </script>
+  </body>
+</html>
