@@ -17,7 +17,7 @@
     </style>
   </head>
   <body class="bg-light">
-    <div class="container py-4">
+    <div class="container-fluid py-4">
       <div class="card shadow-sm mb-4">
         <div class="card-body">
           <h4 class="mb-3">Masukkan Data GeoJSON</h4>
@@ -155,6 +155,8 @@
     </div>
 
     <script>
+      let globalSeq = 0;
+
       function convertToTable() {
         const jsonText = document.getElementById("jsonInput").value;
         let data;
@@ -185,6 +187,7 @@
       <table class="table table-bordered table-striped">
         <thead class="table-light">
           <tr>
+            <th>Seq</th>
             <th>No</th>
             <th>Second</th>
             <th>Latitude</th>
@@ -202,7 +205,9 @@
     `;
 
         let interval = 0;
+        globalSeq = coordinates.length;
         coordinates.forEach((item, index) => {
+          const seq = index + 1;
           const lon = item[0];
           const lat = item[1];
 
@@ -228,6 +233,7 @@
 
           html += `
     <tr>
+      <td class="seq">${seq}</td>
       <td class="no">${index + 1}</td>
 
       <td><input type="number" class="form-control form-control-sm second-input" value="${interval}"></td>
@@ -368,6 +374,7 @@
 
         const originalSecond =
           parseInt(row.querySelector(".second-input").value) || 0;
+        const seq = row.querySelector(".seq").innerText;
         const lat = row.querySelector(".lat").innerText;
         const lon = row.querySelector(".lon").innerText;
 
@@ -378,9 +385,9 @@
         const second2 = originalSecond + 120;
         const second3 = second2 + secondInterval;
 
-        const row1 = createStopRow(second1, lat, lon, 0, 1);
-        const row2 = createStopRow(second2, lat, lon, 0, 0);
-        const row3 = createStopRow(second3, lat, lon, 0, 1);
+        const row1 = createStopRow(seq, second1, lat, lon, 0, 1);
+        const row2 = createStopRow(seq, second2, lat, lon, 0, 0);
+        const row3 = createStopRow(seq, second3, lat, lon, 0, 1);
 
         // Sisipkan 3 baris di posisi yang tepat
         if (nextSibling) {
@@ -425,12 +432,13 @@
         });
       }
 
-      function createStopRow(secondValue, lat, lon, speed, acc) {
+      function createStopRow(seqValue, secondValue, lat, lon, speed, acc) {
         const tr = document.createElement("tr");
 
         tr.classList.add("stop-row");
 
         tr.innerHTML = `
+    <td class="seq">${seqValue}</td>
     <td class="no"></td>
 
     <td><input type="number" class="form-control form-control-sm second-input" value="${secondValue}"></td>
