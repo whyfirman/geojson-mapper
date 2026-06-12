@@ -1157,7 +1157,25 @@
           this.resultContainer = options.resultContainer;
           this.inputs = options.inputs;
 
+          this.resultContainer.addEventListener("input", (event) => {
+            if (!event.target.classList.contains("stop-duration-input")) {
+              return;
+            }
+
+            const row = event.target.closest("tr");
+            if (row?.dataset.rowKind === "generated") {
+              return;
+            }
+
+            this.handleStopDurationChange(row);
+          });
+
           this.resultContainer.addEventListener("change", (event) => {
+            if (event.target.classList.contains("stop-duration-input")) {
+              this.handleStopDurationChange(event.target.closest("tr"));
+              return;
+            }
+
             if (!event.target.classList.contains("set-select")) {
               return;
             }
@@ -1232,7 +1250,7 @@
               const currentSecond = index === 0 ? 0 : (interval += ranges.second);
 
               return `
-                <tr>
+                <tr data-row-kind="base" data-row-id="${this.createRowId()}">
                   <td class="seq">${index + 1}</td>
                   <td class="no">${index + 1}</td>
                   <td><input type="number" class="form-control form-control-sm second-input" value="${currentSecond}"></td>
@@ -1240,6 +1258,7 @@
                   <td class="lon">${lon}</td>
                   <td class="sat">15</td>
                   <td><input type="number" class="form-control form-control-sm speed-input" value="${speed}"></td>
+                  <td><input type="number" class="form-control form-control-sm stop-duration-input" value="0" min="0" step="0.5"></td>
                   <td>
                     <select class="form-select form-select-sm acc-input">
                       <option value="1" ${acc === 1 ? "selected" : ""}>1</option>
@@ -1271,6 +1290,7 @@
                   <th>Longitude</th>
                   <th>Satellites</th>
                   <th>Speed</th>
+                  <th>Stop (min)</th>
                   <th>ACC</th>
                   <th>DIGITALINPUT2</th>
                   <th>DALLASTEMPERATURE1</th>
@@ -1283,13 +1303,12 @@
           `;
         }
 
-        buildActionSelect() {
+        buildActionSelect(disabled = false) {
           return `
-            <select class="form-select form-select-sm set-select">
+            <select class="form-select form-select-sm set-select" ${disabled ? "disabled" : ""}>
               <option value="">-- Pilih --</option>
               <option value="duplicate">Duplicate</option>
               <option value="delete">Delete</option>
-              <option value="stop">Berhenti</option>
             </select>
           `;
         }
@@ -1300,6 +1319,16 @@
 
         getRows() {
           return this.resultContainer.querySelectorAll("table tbody tr");
+        }
+
+        getBaseRows() {
+          return this.resultContainer.querySelectorAll(
+            'table tbody tr[data-row-kind="base"]'
+          );
+        }
+
+        createRowId() {
+          return `row-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
         }
 
         handleSetAction(selectEl) {
@@ -1314,101 +1343,234 @@
             this.duplicateRow(row);
           } else if (action === "delete") {
             this.deleteRow(row);
-          } else if (action === "stop") {
-            this.stopRow(row);
           }
 
           selectEl.value = "";
         }
 
         duplicateRow(row) {
-          const clone = row.cloneNode(true);
+          const sourceRow = this.getManageableBaseRow(row);
+          if (!sourceRow) {
+            return;
+          }
+
+          const clone = sourceRow.cloneNode(true);
+          clone.dataset.rowKind = "base";
+          clone.dataset.rowId = this.createRowId();
+          clone.classList.remove("stop-row");
+          delete clone.dataset.originalSpeed;
+          delete clone.dataset.originalAcc;
+          delete clone.dataset.originalDigital;
           clone.querySelector(".set-select").value = "";
-          row.parentNode.insertBefore(clone, row.nextSibling);
+          clone.querySelector(".set-select").disabled = false;
+          clone.querySelector(".stop-duration-input").value = 0;
+
+          const insertionPoint = this.getLastRowInStopBlock(sourceRow);
+          insertionPoint.parentNode.insertBefore(clone, insertionPoint.nextSibling);
 
           this.updateRowNumbers();
           this.recalculateSeconds();
         }
 
         deleteRow(row) {
-          const tbody = row.parentNode;
-          if (tbody.querySelectorAll("tr").length <= 1) {
+          const baseRow = this.getManageableBaseRow(row);
+          if (!baseRow) {
+            return;
+          }
+
+          if (this.getBaseRows().length <= 1) {
             alert("Minimal harus ada 1 baris!");
             return;
           }
 
-          row.remove();
+          this.removeGeneratedStopRows(baseRow);
+          baseRow.remove();
           this.updateRowNumbers();
           this.recalculateSeconds();
         }
 
-        stopRow(row) {
-          const secondInterval = this.getNumericInput("second");
-          if (Number.isNaN(secondInterval)) {
-            alert("Second interval tidak valid!");
+        handleStopDurationChange(row) {
+          const baseRow = this.getManageableBaseRow(row);
+          if (!baseRow) {
             return;
           }
 
-          const tbody = row.parentNode;
-          const originalSecond =
-            parseInt(row.querySelector(".second-input").value, 10) || 0;
-          const seq = row.querySelector(".seq").innerText;
-          const lat = row.querySelector(".lat").innerText;
-          const lon = row.querySelector(".lon").innerText;
-          const sat = row.querySelector(".sat").innerText;
-          const temp1 = row.querySelector(".temp1-input").value;
-          const temp2 = row.querySelector(".temp2-input").value;
-          const nextSibling = row.nextSibling;
+          const secondInterval = this.getNumericInput("second");
+          if (Number.isNaN(secondInterval) || secondInterval <= 0) {
+            alert("Second interval harus lebih dari 0 untuk membuat row berhenti.");
+            return;
+          }
 
-          row.remove();
+          const stopDurationInput = baseRow.querySelector(".stop-duration-input");
+          const stopDurationMinutes = parseFloat(stopDurationInput.value) || 0;
 
-          const stopRows = [
-            this.createStopRow(seq, originalSecond, lat, lon, 0, 1, sat, temp1, temp2),
-            this.createStopRow(seq, originalSecond + 120, lat, lon, 0, 0, sat, temp1, temp2),
-            this.createStopRow(seq, originalSecond + 120 + secondInterval, lat, lon, 0, 1, sat, temp1, temp2),
-          ];
+          if (stopDurationMinutes < 0) {
+            alert("Durasi stop tidak valid.");
+            stopDurationInput.value = 0;
+            return;
+          }
 
-          stopRows.forEach((stopRow) => {
-            if (nextSibling) {
-              tbody.insertBefore(stopRow, nextSibling);
-            } else {
-              tbody.appendChild(stopRow);
-            }
-          });
+          this.removeGeneratedStopRows(baseRow);
+
+          if (stopDurationMinutes === 0) {
+            this.clearStopState(baseRow);
+            this.updateRowNumbers();
+            this.recalculateSeconds();
+            return;
+          }
+
+          this.applyStopStateToBaseRow(baseRow);
+
+          const totalStopSeconds = Math.round(stopDurationMinutes * 60);
+          const totalStopRowCount = Math.max(
+            1,
+            Math.ceil(totalStopSeconds / secondInterval)
+          );
+          const generatedRowCount = Math.max(0, totalStopRowCount - 1);
+          const secondStart =
+            parseInt(baseRow.querySelector(".second-input").value, 10) || 0;
+          const rowData = this.extractBaseRowData(baseRow);
+          let insertionPoint = baseRow;
+
+          for (let index = 1; index <= generatedRowCount; index++) {
+            const generatedRow = this.createGeneratedStopRow(
+              baseRow,
+              secondStart + index * secondInterval,
+              rowData,
+              stopDurationMinutes
+            );
+            insertionPoint.parentNode.insertBefore(
+              generatedRow,
+              insertionPoint.nextSibling
+            );
+            insertionPoint = generatedRow;
+          }
 
           this.updateRowNumbers();
           this.recalculateSeconds();
         }
 
-        createStopRow(seqValue, secondValue, lat, lon, speed, acc, sat, temp1, temp2) {
+        applyStopStateToBaseRow(baseRow) {
+          if (!baseRow.dataset.originalSpeed) {
+            baseRow.dataset.originalSpeed =
+              baseRow.querySelector(".speed-input").value || 0;
+            baseRow.dataset.originalAcc =
+              baseRow.querySelector(".acc-input").value || 0;
+            baseRow.dataset.originalDigital =
+              baseRow.querySelector(".digital-input").value || 0;
+          }
+
+          baseRow.classList.add("stop-row");
+          baseRow.querySelector(".speed-input").value = 0;
+          baseRow.querySelector(".acc-input").value = "0";
+          baseRow.querySelector(".digital-input").value = "0";
+        }
+
+        clearStopState(baseRow) {
+          baseRow.classList.remove("stop-row");
+
+          if (baseRow.dataset.originalSpeed !== undefined) {
+            baseRow.querySelector(".speed-input").value =
+              baseRow.dataset.originalSpeed;
+          }
+
+          if (baseRow.dataset.originalAcc !== undefined) {
+            baseRow.querySelector(".acc-input").value =
+              baseRow.dataset.originalAcc;
+          }
+
+          if (baseRow.dataset.originalDigital !== undefined) {
+            baseRow.querySelector(".digital-input").value =
+              baseRow.dataset.originalDigital;
+          }
+
+          delete baseRow.dataset.originalSpeed;
+          delete baseRow.dataset.originalAcc;
+          delete baseRow.dataset.originalDigital;
+        }
+
+        extractBaseRowData(row) {
+          return {
+            seq: row.querySelector(".seq").innerText,
+            lat: row.querySelector(".lat").innerText,
+            lon: row.querySelector(".lon").innerText,
+            sat: row.querySelector(".sat").innerText || 15,
+            acc: 0,
+            digital: 0,
+            temp1: row.querySelector(".temp1-input").value || 0,
+            temp2: row.querySelector(".temp2-input").value || 0,
+          };
+        }
+
+        createGeneratedStopRow(baseRow, secondValue, rowData, stopDurationMinutes) {
           const tr = document.createElement("tr");
           tr.classList.add("stop-row");
+          tr.dataset.rowKind = "generated";
+          tr.dataset.stopParentId = baseRow.dataset.rowId;
           tr.innerHTML = `
-            <td class="seq">${seqValue}</td>
+            <td class="seq">${rowData.seq}</td>
             <td class="no"></td>
             <td><input type="number" class="form-control form-control-sm second-input" value="${secondValue}"></td>
-            <td class="lat">${lat}</td>
-            <td class="lon">${lon}</td>
-            <td class="sat">${sat || 15}</td>
-            <td><input type="number" class="form-control form-control-sm speed-input" value="${speed}"></td>
+            <td class="lat">${rowData.lat}</td>
+            <td class="lon">${rowData.lon}</td>
+            <td class="sat">${rowData.sat}</td>
+            <td><input type="number" class="form-control form-control-sm speed-input" value="0"></td>
+            <td><input type="number" class="form-control form-control-sm stop-duration-input" value="${stopDurationMinutes}" min="0" step="0.5" readonly disabled></td>
             <td>
               <select class="form-select form-select-sm acc-input">
-                <option value="1" ${acc === 1 ? "selected" : ""}>1</option>
-                <option value="0" ${acc === 0 ? "selected" : ""}>0</option>
+                <option value="1">1</option>
+                <option value="0" selected>0</option>
               </select>
             </td>
             <td>
               <select class="form-select form-select-sm digital-input">
-                <option value="1" ${acc === 1 ? "selected" : ""}>1</option>
-                <option value="0" ${acc === 0 ? "selected" : ""}>0</option>
+                <option value="1">1</option>
+                <option value="0" selected>0</option>
               </select>
             </td>
-            <td><input type="number" class="form-control form-control-sm temp1-input" value="${temp1 || 0}"></td>
-            <td><input type="number" class="form-control form-control-sm temp2-input" value="${temp2 || 0}"></td>
-            <td>${this.buildActionSelect()}</td>
+            <td><input type="number" class="form-control form-control-sm temp1-input" value="${rowData.temp1}"></td>
+            <td><input type="number" class="form-control form-control-sm temp2-input" value="${rowData.temp2}"></td>
+            <td>${this.buildActionSelect(true)}</td>
           `;
 
           return tr;
+        }
+
+        getManageableBaseRow(row) {
+          if (!row) {
+            return null;
+          }
+
+          if (row.dataset.rowKind === "base") {
+            return row;
+          }
+
+          if (row.dataset.stopParentId) {
+            return this.resultContainer.querySelector(
+              `tr[data-row-id="${row.dataset.stopParentId}"]`
+            );
+          }
+
+          return row;
+        }
+
+        getLastRowInStopBlock(baseRow) {
+          const generatedRows = this.getGeneratedRowsForBase(baseRow);
+          return generatedRows.length > 0
+            ? generatedRows[generatedRows.length - 1]
+            : baseRow;
+        }
+
+        getGeneratedRowsForBase(baseRow) {
+          return Array.from(
+            this.resultContainer.querySelectorAll(
+              `tr[data-stop-parent-id="${baseRow.dataset.rowId}"]`
+            )
+          );
+        }
+
+        removeGeneratedStopRows(baseRow) {
+          this.getGeneratedRowsForBase(baseRow).forEach((row) => row.remove());
         }
 
         updateRowNumbers() {
@@ -1428,11 +1590,6 @@
           this.getRows().forEach((row) => {
             const secondInput = row.querySelector(".second-input");
 
-            if (row.classList.contains("stop-row")) {
-              lastSecond = parseInt(secondInput.value, 10);
-              return;
-            }
-
             if (lastSecond === null) {
               lastSecond = parseInt(secondInput.value, 10) || 0;
               secondInput.value = lastSecond;
@@ -1451,8 +1608,16 @@
             return;
           }
 
+          this.syncAllStopBlocks();
+
           this.getRows().forEach((row, index) => {
             row.querySelector(".second-input").value = index === 0 ? 0 : interval * index;
+          });
+        }
+
+        syncAllStopBlocks() {
+          this.getBaseRows().forEach((baseRow) => {
+            this.handleStopDurationChange(baseRow);
           });
         }
 
