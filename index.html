@@ -432,7 +432,21 @@
         <div class="card-body p-4">
           <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
             <h4 class="mb-0">Hasil Tabel Koordinat</h4>
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <input
+                type="text"
+                id="apiKeyInput"
+                class="form-control form-control-sm"
+                placeholder="Masukkan X-API-Key"
+                style="min-width: 240px"
+              />
+              <button
+                class="btn btn-sm btn-outline-primary"
+                id="uploadApiBtn"
+                type="button"
+              >
+                Upload to API
+              </button>
               <button
                 class="btn btn-sm btn-outline-secondary"
                 id="clearTableBtn"
@@ -445,6 +459,7 @@
               </button>
             </div>
           </div>
+          <div id="apiUploadStatus" class="small text-secondary mt-2"></div>
           <div id="result" class="table-responsive mt-3"></div>
         </div>
       </div>
@@ -1439,10 +1454,21 @@
         }
 
         exportToTxt(plateValue) {
+          const { blob, fileName } = this.buildTxtFile(plateValue);
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement("a");
+
+          anchor.href = url;
+          anchor.download = fileName;
+          anchor.click();
+
+          URL.revokeObjectURL(url);
+        }
+
+        buildTxtFile(plateValue) {
           const rows = this.getRows();
           if (rows.length === 0) {
-            alert("Tidak ada data untuk diexport!");
-            return;
+            throw new Error("Tidak ada data TXT yang bisa diproses.");
           }
 
           const plateSafe =
@@ -1467,15 +1493,61 @@
             content += `${second},${lon},${lat},${sat},${speed},${acc},${digital},${temp1},${temp2}\n`;
           });
 
-          const blob = new Blob([content], { type: "text/plain" });
-          const url = URL.createObjectURL(blob);
-          const anchor = document.createElement("a");
+          return {
+            content,
+            fileName: `RUN-${plateSafe}.txt`,
+            blob: new Blob([content], { type: "text/plain" }),
+          };
+        }
 
-          anchor.href = url;
-          anchor.download = `RUN-${plateSafe}.txt`;
-          anchor.click();
+        async uploadToScenarioApi(plateValue, apiKey) {
+          const trimmedApiKey = apiKey.trim();
+          if (!trimmedApiKey) {
+            throw new Error("X-API-Key wajib diisi.");
+          }
 
-          URL.revokeObjectURL(url);
+          const { blob, fileName } = this.buildTxtFile(plateValue);
+          const formData = new FormData();
+          formData.append("file", new File([blob], fileName, { type: "text/plain" }));
+
+          let response;
+          try {
+            response = await fetch(
+              "https://api-staging.mceasy.cloud/kernel/api/v1/scenario/upload_file",
+              {
+                method: "POST",
+                headers: {
+                  accept: "application/json",
+                  "X-API-Key": trimmedApiKey,
+                },
+                body: formData,
+              }
+            );
+          } catch (error) {
+            throw new Error("Gagal menghubungi API upload.");
+          }
+
+          const rawText = await response.text();
+          let payload = null;
+
+          try {
+            payload = rawText ? JSON.parse(rawText) : null;
+          } catch (error) {
+            payload = rawText;
+          }
+
+          if (!response.ok) {
+            const message =
+              typeof payload === "string"
+                ? payload
+                : payload?.message || payload?.detail || "Upload API gagal.";
+            throw new Error(message);
+          }
+
+          return {
+            fileName,
+            payload,
+          };
         }
 
         clearTable() {
@@ -1513,6 +1585,9 @@
             regenerateSecondBtn: document.getElementById("regenerateSecondBtn"),
             convertTableBtn: document.getElementById("convertTableBtn"),
             clearTableBtn: document.getElementById("clearTableBtn"),
+            apiKeyInput: document.getElementById("apiKeyInput"),
+            uploadApiBtn: document.getElementById("uploadApiBtn"),
+            apiUploadStatus: document.getElementById("apiUploadStatus"),
             exportTxtBtn: document.getElementById("exportTxtBtn"),
           };
 
@@ -1576,11 +1651,48 @@
 
           this.elements.clearTableBtn.addEventListener("click", () => {
             this.tableManager.clearTable();
+            this.setApiStatus("");
+          });
+
+          this.elements.uploadApiBtn.addEventListener("click", async () => {
+            this.setApiStatus("Uploading TXT ke API...");
+            this.elements.uploadApiBtn.disabled = true;
+
+            try {
+              const result = await this.tableManager.uploadToScenarioApi(
+                this.elements.licensePlate.value,
+                this.elements.apiKeyInput.value
+              );
+              this.setApiStatus(`Upload berhasil: ${result.fileName}`, "success");
+            } catch (error) {
+              this.setApiStatus(error.message, "error");
+            } finally {
+              this.elements.uploadApiBtn.disabled = false;
+            }
           });
 
           this.elements.exportTxtBtn.addEventListener("click", () => {
-            this.tableManager.exportToTxt(this.elements.licensePlate.value);
+            this.runSafely(() => {
+              this.tableManager.exportToTxt(this.elements.licensePlate.value);
+            });
           });
+        }
+
+        setApiStatus(message, tone = "muted") {
+          this.elements.apiUploadStatus.textContent = message;
+          this.elements.apiUploadStatus.className = "small mt-2";
+
+          if (tone === "success") {
+            this.elements.apiUploadStatus.classList.add("text-success");
+            return;
+          }
+
+          if (tone === "error") {
+            this.elements.apiUploadStatus.classList.add("text-danger");
+            return;
+          }
+
+          this.elements.apiUploadStatus.classList.add("text-secondary");
         }
 
         runSafely(action) {
