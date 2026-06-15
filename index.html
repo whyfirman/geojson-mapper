@@ -1237,15 +1237,27 @@
 
           const ranges = this.getValidatedRanges();
           let interval = 0;
+          const speedSeries = this.buildSpeedSeries(
+            coordinates.length,
+            ranges.minSpeed,
+            ranges.maxSpeed
+          );
+          const temp1Series = this.buildSmoothSeries(
+            coordinates.length,
+            ranges.minTemp1,
+            ranges.maxTemp1
+          );
+          const temp2Series = this.buildSmoothSeries(
+            coordinates.length,
+            ranges.minTemp2,
+            ranges.maxTemp2
+          );
 
           const rows = coordinates
             .map((item, index) => {
               const lon = Number(item[0]);
               const lat = Number(item[1]);
-              const speed =
-                index === 0
-                  ? 0
-                  : this.randomBetween(ranges.minSpeed, ranges.maxSpeed);
+              const speed = speedSeries[index];
               const acc = index === 0 ? 0 : 1;
               const currentSecond = index === 0 ? 0 : (interval += ranges.second);
 
@@ -1271,8 +1283,8 @@
                       <option value="0" ${acc === 0 ? "selected" : ""}>0</option>
                     </select>
                   </td>
-                  <td><input type="number" class="form-control form-control-sm temp1-input" value="${this.randomBetween(ranges.minTemp1, ranges.maxTemp1)}"></td>
-                  <td><input type="number" class="form-control form-control-sm temp2-input" value="${this.randomBetween(ranges.minTemp2, ranges.maxTemp2)}"></td>
+                  <td><input type="number" class="form-control form-control-sm temp1-input" value="${temp1Series[index]}"></td>
+                  <td><input type="number" class="form-control form-control-sm temp2-input" value="${temp2Series[index]}"></td>
                   <td>${this.buildActionSelect()}</td>
                 </tr>
               `;
@@ -1315,6 +1327,93 @@
 
         randomBetween(min, max) {
           return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        clamp(value, min, max) {
+          return Math.min(max, Math.max(min, value));
+        }
+
+        buildSmoothSeries(length, min, max, options = {}) {
+          if (length <= 0) {
+            return [];
+          }
+
+          if (min === max) {
+            return Array.from({ length }, () => min);
+          }
+
+          const span = max - min;
+          const maxStep = Math.max(
+            1,
+            Math.min(
+              options.maxStep ?? Math.round(span * 0.18),
+              Math.max(1, Math.round(span * 0.35))
+            )
+          );
+          const targetShift = Math.max(
+            maxStep + 1,
+            options.targetShift ?? Math.round(span * 0.3)
+          );
+          const changeTargetEvery = Math.max(2, options.changeTargetEvery ?? 4);
+          const jitterLimit = Math.max(0, Math.round(maxStep * 0.25));
+          let current = this.clamp(
+            options.startValue ?? this.randomBetween(min, max),
+            min,
+            max
+          );
+          let target = this.pickNearbyTarget(current, min, max, targetShift);
+
+          return Array.from({ length }, (_, index) => {
+            if (index === 0) {
+              return current;
+            }
+
+            if (
+              index % changeTargetEvery === 0 ||
+              Math.abs(target - current) <= Math.max(1, Math.floor(maxStep / 2))
+            ) {
+              target = this.pickNearbyTarget(current, min, max, targetShift);
+            }
+
+            const delta = target - current;
+            const direction = delta === 0 ? 0 : delta > 0 ? 1 : -1;
+            const step = Math.min(
+              Math.abs(delta),
+              this.randomBetween(1, maxStep)
+            );
+            const jitter =
+              jitterLimit === 0
+                ? 0
+                : this.randomBetween(-jitterLimit, jitterLimit);
+
+            current = this.clamp(current + direction * step + jitter, min, max);
+            return current;
+          });
+        }
+
+        buildSpeedSeries(length, min, max) {
+          if (length <= 0) {
+            return [];
+          }
+
+          if (length === 1) {
+            return [0];
+          }
+
+          const movingSeries = this.buildSmoothSeries(length - 1, min, max, {
+            startValue: min,
+            maxStep: Math.max(1, Math.round((max - min) * 0.16)),
+            targetShift: Math.max(2, Math.round((max - min) * 0.28)),
+            changeTargetEvery: 3,
+          });
+
+          return [0, ...movingSeries];
+        }
+
+        pickNearbyTarget(current, min, max, shift) {
+          const targetMin = this.clamp(current - shift, min, max);
+          const targetMax = this.clamp(current + shift, min, max);
+          return this.randomBetween(targetMin, targetMax);
         }
 
         getRows() {
