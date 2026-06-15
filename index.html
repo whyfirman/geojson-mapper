@@ -151,6 +151,19 @@
         text-align: center;
       }
 
+      #result.table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+      }
+
+      #result table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: #f8f9fa;
+        box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+      }
+
       @media (max-width: 991.98px) {
         :root {
           --map-height: 420px;
@@ -1158,6 +1171,14 @@
           this.inputs = options.inputs;
 
           this.resultContainer.addEventListener("input", (event) => {
+            if (
+              event.target.classList.contains("speed-input") ||
+              event.target.classList.contains("temp1-input") ||
+              event.target.classList.contains("temp2-input")
+            ) {
+              this.handleTelemetryInputChange(event.target);
+            }
+
             if (!event.target.classList.contains("stop-duration-input")) {
               return;
             }
@@ -1242,12 +1263,12 @@
             ranges.minSpeed,
             ranges.maxSpeed
           );
-          const temp1Series = this.buildSmoothSeries(
+          const temp1Series = this.buildTemperatureSeries(
             coordinates.length,
             ranges.minTemp1,
             ranges.maxTemp1
           );
-          const temp2Series = this.buildSmoothSeries(
+          const temp2Series = this.buildTemperatureSeries(
             coordinates.length,
             ranges.minTemp2,
             ranges.maxTemp2
@@ -1262,7 +1283,13 @@
               const currentSecond = index === 0 ? 0 : (interval += ranges.second);
 
               return `
-                <tr data-row-kind="base" data-row-id="${this.createRowId()}">
+                <tr
+                  data-row-kind="base"
+                  data-row-id="${this.createRowId()}"
+                  data-base-speed="${speed}"
+                  data-base-temp1="${temp1Series[index]}"
+                  data-base-temp2="${temp2Series[index]}"
+                >
                   <td class="seq">${index + 1}</td>
                   <td class="no">${index + 1}</td>
                   <td><input type="number" class="form-control form-control-sm second-input" value="${currentSecond}"></td>
@@ -1355,7 +1382,10 @@
             options.targetShift ?? Math.round(span * 0.3)
           );
           const changeTargetEvery = Math.max(2, options.changeTargetEvery ?? 4);
-          const jitterLimit = Math.max(0, Math.round(maxStep * 0.25));
+          const jitterLimit =
+            options.jitterLimit !== undefined
+              ? Math.max(0, options.jitterLimit)
+              : Math.max(0, Math.round(maxStep * 0.25));
           let current = this.clamp(
             options.startValue ?? this.randomBetween(min, max),
             min,
@@ -1391,6 +1421,27 @@
           });
         }
 
+        handleTelemetryInputChange(inputEl) {
+          const row = inputEl.closest("tr");
+          if (!row || row.dataset.rowKind !== "base" || this.isStoppedBaseRow(row)) {
+            return;
+          }
+
+          if (inputEl.classList.contains("speed-input")) {
+            row.dataset.baseSpeed = inputEl.value || 0;
+            return;
+          }
+
+          if (inputEl.classList.contains("temp1-input")) {
+            row.dataset.baseTemp1 = inputEl.value || 0;
+            return;
+          }
+
+          if (inputEl.classList.contains("temp2-input")) {
+            row.dataset.baseTemp2 = inputEl.value || 0;
+          }
+        }
+
         buildSpeedSeries(length, min, max) {
           if (length <= 0) {
             return [];
@@ -1408,6 +1459,23 @@
           });
 
           return [0, ...movingSeries];
+        }
+
+        buildTemperatureSeries(length, min, max) {
+          if (length <= 0) {
+            return [];
+          }
+
+          const span = max - min;
+          const midPoint = Math.round((min + max) / 2);
+
+          return this.buildSmoothSeries(length, min, max, {
+            startValue: this.clamp(midPoint, min, max),
+            maxStep: Math.max(1, Math.round(span * 0.05)),
+            targetShift: Math.max(1, Math.round(span * 0.1)),
+            changeTargetEvery: 6,
+            jitterLimit: 0,
+          });
         }
 
         pickNearbyTarget(current, min, max, shift) {
@@ -1469,6 +1537,7 @@
 
           this.updateRowNumbers();
           this.recalculateSeconds();
+          this.rebuildMotionProfile();
         }
 
         deleteRow(row) {
@@ -1486,9 +1555,14 @@
           baseRow.remove();
           this.updateRowNumbers();
           this.recalculateSeconds();
+          this.rebuildMotionProfile();
         }
 
         handleStopDurationChange(row) {
+          this.handleStopDurationChangeInternal(row, true);
+        }
+
+        handleStopDurationChangeInternal(row, shouldRebuildMotionProfile) {
           const baseRow = this.getManageableBaseRow(row);
           if (!baseRow) {
             return;
@@ -1515,10 +1589,14 @@
             this.clearStopState(baseRow);
             this.updateRowNumbers();
             this.recalculateSeconds();
+            if (shouldRebuildMotionProfile) {
+              this.rebuildMotionProfile();
+            }
             return;
           }
 
           this.applyStopStateToBaseRow(baseRow);
+          this.rebuildMotionProfile();
 
           const totalStopSeconds = Math.round(stopDurationMinutes * 60);
           const totalStopRowCount = Math.max(
@@ -1547,6 +1625,10 @@
 
           this.updateRowNumbers();
           this.recalculateSeconds();
+
+          if (shouldRebuildMotionProfile) {
+            this.rebuildMotionProfile();
+          }
         }
 
         applyStopStateToBaseRow(baseRow) {
@@ -1557,6 +1639,10 @@
               baseRow.querySelector(".acc-input").value || 0;
             baseRow.dataset.originalDigital =
               baseRow.querySelector(".digital-input").value || 0;
+            baseRow.dataset.originalTemp1 =
+              baseRow.querySelector(".temp1-input").value || 0;
+            baseRow.dataset.originalTemp2 =
+              baseRow.querySelector(".temp2-input").value || 0;
           }
 
           baseRow.classList.add("stop-row");
@@ -1583,9 +1669,21 @@
               baseRow.dataset.originalDigital;
           }
 
+          if (baseRow.dataset.originalTemp1 !== undefined) {
+            baseRow.querySelector(".temp1-input").value =
+              baseRow.dataset.originalTemp1;
+          }
+
+          if (baseRow.dataset.originalTemp2 !== undefined) {
+            baseRow.querySelector(".temp2-input").value =
+              baseRow.dataset.originalTemp2;
+          }
+
           delete baseRow.dataset.originalSpeed;
           delete baseRow.dataset.originalAcc;
           delete baseRow.dataset.originalDigital;
+          delete baseRow.dataset.originalTemp1;
+          delete baseRow.dataset.originalTemp2;
         }
 
         extractBaseRowData(row) {
@@ -1672,6 +1770,235 @@
           this.getGeneratedRowsForBase(baseRow).forEach((row) => row.remove());
         }
 
+        ensureTelemetrySnapshot(row) {
+          if (!row.dataset.baseSpeed) {
+            row.dataset.baseSpeed =
+              row.querySelector(".speed-input").value || 0;
+          }
+
+          if (!row.dataset.baseTemp1) {
+            row.dataset.baseTemp1 =
+              row.querySelector(".temp1-input").value || 0;
+          }
+
+          if (!row.dataset.baseTemp2) {
+            row.dataset.baseTemp2 =
+              row.querySelector(".temp2-input").value || 0;
+          }
+        }
+
+        getSnapshotNumber(row, key, selector) {
+          this.ensureTelemetrySnapshot(row);
+          const snapshotValue = parseInt(row.dataset[key], 10);
+
+          if (!Number.isNaN(snapshotValue)) {
+            return snapshotValue;
+          }
+
+          return parseInt(row.querySelector(selector).value, 10) || 0;
+        }
+
+        setTelemetryValue(row, selector, value) {
+          row.querySelector(selector).value = Math.round(value);
+        }
+
+        isStoppedBaseRow(row) {
+          return (parseFloat(row.querySelector(".stop-duration-input").value) || 0) > 0;
+        }
+
+        buildTransitionValues(length, startValue, endValue, jitterLimit = 1) {
+          if (length <= 0) {
+            return [];
+          }
+
+          return Array.from({ length }, (_, index) => {
+            const progress = (index + 1) / (length + 1);
+            const interpolated =
+              startValue + (endValue - startValue) * progress;
+            const jitter =
+              jitterLimit > 0
+                ? this.randomBetween(-jitterLimit, jitterLimit)
+                : 0;
+            return Math.round(interpolated + jitter);
+          });
+        }
+
+        applyTransitionWindow(rows, startIndex, endIndex, fromValues, toValues, ranges) {
+          const segmentLength = endIndex - startIndex + 1;
+          if (segmentLength <= 0) {
+            return;
+          }
+
+          const speedValues = this.buildTransitionValues(
+            segmentLength,
+            fromValues.speed,
+            toValues.speed,
+            1
+          );
+          const temp1Values = this.buildTransitionValues(
+            segmentLength,
+            fromValues.temp1,
+            toValues.temp1,
+            0
+          );
+          const temp2Values = this.buildTransitionValues(
+            segmentLength,
+            fromValues.temp2,
+            toValues.temp2,
+            0
+          );
+
+          for (let index = 0; index < segmentLength; index++) {
+            const row = rows[startIndex + index];
+            this.setTelemetryValue(
+              row,
+              ".speed-input",
+              this.clamp(speedValues[index], 0, ranges.maxSpeed)
+            );
+            this.setTelemetryValue(
+              row,
+              ".temp1-input",
+              this.clamp(temp1Values[index], ranges.minTemp1, ranges.maxTemp1)
+            );
+            this.setTelemetryValue(
+              row,
+              ".temp2-input",
+              this.clamp(temp2Values[index], ranges.minTemp2, ranges.maxTemp2)
+            );
+          }
+        }
+
+        syncGeneratedStopTelemetry(baseRow) {
+          const speedValue = 0;
+          const temp1Value = baseRow.querySelector(".temp1-input").value || 0;
+          const temp2Value = baseRow.querySelector(".temp2-input").value || 0;
+
+          this.getGeneratedRowsForBase(baseRow).forEach((row) => {
+            row.querySelector(".speed-input").value = speedValue;
+            row.querySelector(".temp1-input").value = temp1Value;
+            row.querySelector(".temp2-input").value = temp2Value;
+          });
+        }
+
+        rebuildMotionProfile() {
+          let ranges;
+
+          try {
+            ranges = this.getValidatedRanges();
+          } catch (error) {
+            return;
+          }
+
+          const baseRows = Array.from(this.getBaseRows());
+          if (baseRows.length === 0) {
+            return;
+          }
+
+          baseRows.forEach((row, index) => {
+            this.ensureTelemetrySnapshot(row);
+            this.setTelemetryValue(
+              row,
+              ".speed-input",
+              index === 0
+                ? 0
+                : this.getSnapshotNumber(row, "baseSpeed", ".speed-input")
+            );
+            this.setTelemetryValue(
+              row,
+              ".temp1-input",
+              this.getSnapshotNumber(row, "baseTemp1", ".temp1-input")
+            );
+            this.setTelemetryValue(
+              row,
+              ".temp2-input",
+              this.getSnapshotNumber(row, "baseTemp2", ".temp2-input")
+            );
+          });
+
+          const transitionWindow = 5;
+
+          baseRows.forEach((stopRow, stopIndex) => {
+            if (!this.isStoppedBaseRow(stopRow)) {
+              return;
+            }
+
+            const stopTemp1Base = this.getSnapshotNumber(
+              stopRow,
+              "baseTemp1",
+              ".temp1-input"
+            );
+            const stopTemp2Base = this.getSnapshotNumber(
+              stopRow,
+              "baseTemp2",
+              ".temp2-input"
+            );
+            const stopTemp1 = this.clamp(
+              stopTemp1Base - Math.max(1, Math.round((ranges.maxTemp1 - ranges.minTemp1) * 0.05)),
+              ranges.minTemp1,
+              ranges.maxTemp1
+            );
+            const stopTemp2 = this.clamp(
+              stopTemp2Base - Math.max(1, Math.round((ranges.maxTemp2 - ranges.minTemp2) * 0.05)),
+              ranges.minTemp2,
+              ranges.maxTemp2
+            );
+
+            this.setTelemetryValue(stopRow, ".speed-input", 0);
+            this.setTelemetryValue(stopRow, ".temp1-input", stopTemp1);
+            this.setTelemetryValue(stopRow, ".temp2-input", stopTemp2);
+
+            const beforeStart = Math.max(0, stopIndex - transitionWindow);
+            const beforeEnd = stopIndex - 1;
+            const afterStart = stopIndex + 1;
+            const afterEnd = Math.min(baseRows.length - 1, stopIndex + transitionWindow);
+
+            if (beforeStart <= beforeEnd) {
+              const startRow = baseRows[beforeStart];
+              this.applyTransitionWindow(
+                baseRows,
+                beforeStart,
+                beforeEnd,
+                {
+                  speed:
+                    beforeStart === 0
+                      ? 0
+                      : this.getSnapshotNumber(startRow, "baseSpeed", ".speed-input"),
+                  temp1: this.getSnapshotNumber(startRow, "baseTemp1", ".temp1-input"),
+                  temp2: this.getSnapshotNumber(startRow, "baseTemp2", ".temp2-input"),
+                },
+                {
+                  speed: 0,
+                  temp1: stopTemp1,
+                  temp2: stopTemp2,
+                },
+                ranges
+              );
+            }
+
+            if (afterStart <= afterEnd) {
+              const endRow = baseRows[afterEnd];
+              this.applyTransitionWindow(
+                baseRows,
+                afterStart,
+                afterEnd,
+                {
+                  speed: 0,
+                  temp1: stopTemp1,
+                  temp2: stopTemp2,
+                },
+                {
+                  speed: this.getSnapshotNumber(endRow, "baseSpeed", ".speed-input"),
+                  temp1: this.getSnapshotNumber(endRow, "baseTemp1", ".temp1-input"),
+                  temp2: this.getSnapshotNumber(endRow, "baseTemp2", ".temp2-input"),
+                },
+                ranges
+              );
+            }
+
+            this.syncGeneratedStopTelemetry(stopRow);
+          });
+        }
+
         updateRowNumbers() {
           this.getRows().forEach((row, index) => {
             row.querySelector(".no").innerText = index + 1;
@@ -1716,8 +2043,9 @@
 
         syncAllStopBlocks() {
           this.getBaseRows().forEach((baseRow) => {
-            this.handleStopDurationChange(baseRow);
+            this.handleStopDurationChangeInternal(baseRow, false);
           });
+          this.rebuildMotionProfile();
         }
 
         exportToTxt(plateValue) {
