@@ -319,6 +319,52 @@
                 </div>
               </div>
 
+              <div class="row mt-3">
+                <div class="col-md-6">
+                  <label class="form-label">Interval Temperature (per row)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    id="intervalTemperature"
+                    class="form-control"
+                    value="1"
+                  />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Interval Fuel (cm per row)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    id="intervalFuel"
+                    class="form-control"
+                    value="0.05"
+                  />
+                </div>
+              </div>
+
+              <div class="row mt-3">
+                <div class="col-md-6">
+                  <label class="form-label">Minimal Fuel (Ultrasonic, cm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    id="minFuel"
+                    class="form-control"
+                    value="20"
+                  />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Maksimal Fuel (Ultrasonic, cm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    id="maxFuel"
+                    class="form-control"
+                    value="60"
+                  />
+                </div>
+              </div>
+
               <button
                 class="btn btn-primary mt-3"
                 id="convertTableBtn"
@@ -1206,7 +1252,7 @@
         }
 
         getNumericInput(key) {
-          return parseInt(this.inputs[key].value, 10);
+          return parseFloat(this.inputs[key].value);
         }
 
         getValidatedRanges() {
@@ -1218,6 +1264,10 @@
             maxTemp1: this.getNumericInput("maxTemp1"),
             minTemp2: this.getNumericInput("minTemp2"),
             maxTemp2: this.getNumericInput("maxTemp2"),
+            intervalTemperature: this.getNumericInput("intervalTemperature"),
+            intervalFuel: this.getNumericInput("intervalFuel"),
+            minFuel: this.getNumericInput("minFuel"),
+            maxFuel: this.getNumericInput("maxFuel"),
           };
 
           if (Number.isNaN(ranges.second) || ranges.second < 0) {
@@ -1248,6 +1298,29 @@
             throw new Error("Range temperature 2 tidak valid.");
           }
 
+          if (
+            Number.isNaN(ranges.intervalTemperature) ||
+            ranges.intervalTemperature <= 0
+          ) {
+            throw new Error("Interval temperature tidak valid.");
+          }
+
+          if (
+            Number.isNaN(ranges.minFuel) ||
+            Number.isNaN(ranges.maxFuel) ||
+            ranges.minFuel > ranges.maxFuel ||
+            ranges.minFuel < 0
+          ) {
+            throw new Error("Range fuel tidak valid.");
+          }
+
+          if (
+            Number.isNaN(ranges.intervalFuel) ||
+            ranges.intervalFuel <= 0
+          ) {
+            throw new Error("Interval fuel tidak valid.");
+          }
+
           return ranges;
         }
 
@@ -1266,12 +1339,20 @@
           const temp1Series = this.buildTemperatureSeries(
             coordinates.length,
             ranges.minTemp1,
-            ranges.maxTemp1
+            ranges.maxTemp1,
+            ranges.intervalTemperature
           );
           const temp2Series = this.buildTemperatureSeries(
             coordinates.length,
             ranges.minTemp2,
-            ranges.maxTemp2
+            ranges.maxTemp2,
+            ranges.intervalTemperature
+          );
+          const fuelSeries = this.buildFuelSeries(
+            coordinates.length,
+            ranges.minFuel,
+            ranges.maxFuel,
+            ranges.intervalFuel
           );
 
           const rows = coordinates
@@ -1279,6 +1360,7 @@
               const lon = Number(item[0]);
               const lat = Number(item[1]);
               const speed = speedSeries[index];
+              const fuel = fuelSeries[index];
               const acc = index === 0 ? 0 : 1;
               const currentSecond = index === 0 ? 0 : (interval += ranges.second);
 
@@ -1289,6 +1371,7 @@
                   data-base-speed="${speed}"
                   data-base-temp1="${temp1Series[index]}"
                   data-base-temp2="${temp2Series[index]}"
+                  data-base-fuel="${fuel}"
                 >
                   <td class="seq">${index + 1}</td>
                   <td class="no">${index + 1}</td>
@@ -1312,6 +1395,7 @@
                   </td>
                   <td><input type="number" class="form-control form-control-sm temp1-input" value="${temp1Series[index]}"></td>
                   <td><input type="number" class="form-control form-control-sm temp2-input" value="${temp2Series[index]}"></td>
+                  <td><input type="number" step="0.1" class="form-control form-control-sm ultrasonic-input" value="${fuel}"></td>
                   <td>${this.buildActionSelect()}</td>
                 </tr>
               `;
@@ -1334,6 +1418,7 @@
                   <th>DIGITALINPUT2</th>
                   <th>DALLASTEMPERATURE1</th>
                   <th>DALLASTEMPERATURE2</th>
+                  <th>ULTRASONICFUEL</th>
                   <th>Set</th>
                 </tr>
               </thead>
@@ -1439,6 +1524,11 @@
 
           if (inputEl.classList.contains("temp2-input")) {
             row.dataset.baseTemp2 = inputEl.value || 0;
+            return;
+          }
+
+          if (inputEl.classList.contains("ultrasonic-input")) {
+            row.dataset.baseFuel = inputEl.value || 0;
           }
         }
 
@@ -1461,21 +1551,73 @@
           return [0, ...movingSeries];
         }
 
-        buildTemperatureSeries(length, min, max) {
+        buildTemperatureSeries(length, min, max, interval) {
           if (length <= 0) {
             return [];
           }
 
-          const span = max - min;
-          const midPoint = Math.round((min + max) / 2);
+          if (interval > 0) {
+            return Array.from({ length }, (_, index) =>
+              this.clamp(min + index * interval, min, max)
+            );
+          }
 
-          return this.buildSmoothSeries(length, min, max, {
-            startValue: this.clamp(midPoint, min, max),
-            maxStep: Math.max(1, Math.round(span * 0.05)),
-            targetShift: Math.max(1, Math.round(span * 0.1)),
-            changeTargetEvery: 6,
-            jitterLimit: 0,
-          });
+          if (min === max) {
+            return Array.from({ length }, () => min);
+          }
+
+          const values = [];
+          let current = this.clamp(Math.round((min + max) / 2), min, max);
+          let target = this.randomFloat(min, max, 1);
+          const maxStep = Math.max(0.1, (max - min) / Math.max(length - 1, 1) * 0.4);
+
+          for (let index = 0; index < length; index++) {
+            if (index === 0) {
+              values.push(current);
+              continue;
+            }
+
+            if (Math.abs(target - current) < maxStep || this.randomBetween(0, 4) === 0) {
+              target = this.randomFloat(min, max, 1);
+            }
+
+            const delta = target - current;
+            const direction = delta === 0 ? 0 : delta > 0 ? 1 : -1;
+            const step = Math.min(Math.abs(delta), maxStep);
+            const staySame = this.randomBetween(0, 5) === 0;
+
+            current = staySame
+              ? current
+              : this.clamp(current + direction * step, min, max);
+            values.push(Math.round(current * 10) / 10);
+          }
+
+          return values;
+        }
+
+        randomFloat(min, max, precision = 1) {
+          const factor = 10 ** precision;
+          return Math.round((Math.random() * (max - min) + min) * factor) / factor;
+        }
+
+        buildFuelSeries(length, min, max, interval) {
+          if (length <= 0) {
+            return [];
+          }
+
+          if (interval > 0) {
+            return Array.from({ length }, (_, index) =>
+              Math.round(Math.min(max, min + index * interval) * 100) / 100
+            );
+          }
+
+          const result = [];
+          for (let index = 0; index < length; index++) {
+            const value = Math.min(max, min + index * 0.05);
+            result.push(Math.round(value * 100) / 100);
+          }
+
+          return result;
         }
 
         pickNearbyTarget(current, min, max, shift) {
@@ -1643,6 +1785,8 @@
               baseRow.querySelector(".temp1-input").value || 0;
             baseRow.dataset.originalTemp2 =
               baseRow.querySelector(".temp2-input").value || 0;
+            baseRow.dataset.originalFuel =
+              baseRow.querySelector(".ultrasonic-input").value || 0;
           }
 
           baseRow.classList.add("stop-row");
@@ -1679,11 +1823,17 @@
               baseRow.dataset.originalTemp2;
           }
 
+          if (baseRow.dataset.originalFuel !== undefined) {
+            baseRow.querySelector(".ultrasonic-input").value =
+              baseRow.dataset.originalFuel;
+          }
+
           delete baseRow.dataset.originalSpeed;
           delete baseRow.dataset.originalAcc;
           delete baseRow.dataset.originalDigital;
           delete baseRow.dataset.originalTemp1;
           delete baseRow.dataset.originalTemp2;
+          delete baseRow.dataset.originalFuel;
         }
 
         extractBaseRowData(row) {
@@ -1696,6 +1846,7 @@
             digital: 0,
             temp1: row.querySelector(".temp1-input").value || 0,
             temp2: row.querySelector(".temp2-input").value || 0,
+            ultrasonic: row.querySelector(".ultrasonic-input").value || 0,
           };
         }
 
@@ -1727,6 +1878,7 @@
             </td>
             <td><input type="number" class="form-control form-control-sm temp1-input" value="${rowData.temp1}"></td>
             <td><input type="number" class="form-control form-control-sm temp2-input" value="${rowData.temp2}"></td>
+            <td><input type="number" step="0.1" class="form-control form-control-sm ultrasonic-input" value="${rowData.ultrasonic}"></td>
             <td>${this.buildActionSelect(true)}</td>
           `;
 
@@ -1771,35 +1923,42 @@
         }
 
         ensureTelemetrySnapshot(row) {
-          if (!row.dataset.baseSpeed) {
+          if (row.dataset.baseSpeed === undefined) {
             row.dataset.baseSpeed =
               row.querySelector(".speed-input").value || 0;
           }
 
-          if (!row.dataset.baseTemp1) {
+          if (row.dataset.baseTemp1 === undefined) {
             row.dataset.baseTemp1 =
               row.querySelector(".temp1-input").value || 0;
           }
 
-          if (!row.dataset.baseTemp2) {
+          if (row.dataset.baseTemp2 === undefined) {
             row.dataset.baseTemp2 =
               row.querySelector(".temp2-input").value || 0;
+          }
+
+          if (row.dataset.baseFuel === undefined) {
+            row.dataset.baseFuel =
+              row.querySelector(".ultrasonic-input").value || 0;
           }
         }
 
         getSnapshotNumber(row, key, selector) {
           this.ensureTelemetrySnapshot(row);
-          const snapshotValue = parseInt(row.dataset[key], 10);
+          const snapshotValue = parseFloat(row.dataset[key]);
 
           if (!Number.isNaN(snapshotValue)) {
             return snapshotValue;
           }
 
-          return parseInt(row.querySelector(selector).value, 10) || 0;
+          return parseFloat(row.querySelector(selector).value) || 0;
         }
 
         setTelemetryValue(row, selector, value) {
-          row.querySelector(selector).value = Math.round(value);
+          const element = row.querySelector(selector);
+          const rounded = Number.isFinite(value) ? Math.round(value * 10) / 10 : value;
+          element.value = rounded;
         }
 
         isStoppedBaseRow(row) {
@@ -1872,11 +2031,13 @@
           const speedValue = 0;
           const temp1Value = baseRow.querySelector(".temp1-input").value || 0;
           const temp2Value = baseRow.querySelector(".temp2-input").value || 0;
+          const fuelValue = baseRow.querySelector(".ultrasonic-input").value || 0;
 
           this.getGeneratedRowsForBase(baseRow).forEach((row) => {
             row.querySelector(".speed-input").value = speedValue;
             row.querySelector(".temp1-input").value = temp1Value;
             row.querySelector(".temp2-input").value = temp2Value;
+            row.querySelector(".ultrasonic-input").value = fuelValue;
           });
         }
 
@@ -1912,6 +2073,11 @@
               row,
               ".temp2-input",
               this.getSnapshotNumber(row, "baseTemp2", ".temp2-input")
+            );
+          this.setTelemetryValue(
+              row,
+              ".ultrasonic-input",
+              this.getSnapshotNumber(row, "baseFuel", ".ultrasonic-input")
             );
           });
 
@@ -2072,7 +2238,7 @@
               : "NO-LICENSE-PLATE";
 
           let content =
-            "second,Longitude,Latitude,Satellites,Speed,acc,digitalInput2,dallasTemperature1,dallasTemperature2\n";
+            "second,Longitude,Latitude,Satellites,Speed,acc,digitalInput2,ultrasonicFuel,dallasTemperature1,dallasTemperature2\n";
 
           rows.forEach((row) => {
             const second = row.querySelector(".second-input").value;
@@ -2084,8 +2250,9 @@
             const digital = row.querySelector(".digital-input").value;
             const temp1 = row.querySelector(".temp1-input").value;
             const temp2 = row.querySelector(".temp2-input").value;
+            const fuel = row.querySelector(".ultrasonic-input").value;
 
-            content += `${second},${lon},${lat},${sat},${speed},${acc},${digital},${temp1},${temp2}\n`;
+            content += `${second},${lon},${lat},${sat},${speed},${acc},${digital},${fuel},${temp1},${temp2}\n`;
           });
 
           return {
@@ -2162,6 +2329,10 @@
             maxTemp1: document.getElementById("maxTemp1"),
             minTemp2: document.getElementById("minTemp2"),
             maxTemp2: document.getElementById("maxTemp2"),
+            intervalTemperature: document.getElementById("intervalTemperature"),
+            intervalFuel: document.getElementById("intervalFuel"),
+            minFuel: document.getElementById("minFuel"),
+            maxFuel: document.getElementById("maxFuel"),
             result: document.getElementById("result"),
             mapPointCount: document.getElementById("mapPointCount"),
             mapLineCount: document.getElementById("mapLineCount"),
