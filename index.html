@@ -151,6 +151,25 @@
         text-align: center;
       }
 
+      .page-switch-tabs .nav-link {
+        border: 0;
+        border-radius: 999px;
+        color: #355046;
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      .page-switch-tabs .nav-link:hover,
+      .page-switch-tabs .nav-link:focus {
+        color: #163127;
+        background: #ffffff;
+      }
+
+      .page-switch-tabs .nav-link.active {
+        color: #0b1e17;
+        background: #fff7d6;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.16);
+      }
+
       #result.table-responsive {
         max-height: 70vh;
         overflow-y: auto;
@@ -177,6 +196,23 @@
   </head>
   <body>
     <div class="container-fluid py-4 px-lg-4">
+      <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-4">
+        <div>
+          <h3 class="mb-1">GeoJSON Mapper Workspace</h3>
+          <p class="text-secondary mb-0">
+            Gunakan tab ini untuk berpindah antara halaman utama dan `index-v1`.
+          </p>
+        </div>
+        <ul class="nav nav-pills page-switch-tabs gap-2">
+          <li class="nav-item">
+            <a class="nav-link active" href="index.html" aria-current="page">Index</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="index-v1.html">Index V1</a>
+          </li>
+        </ul>
+      </div>
+
       <div class="row g-4 align-items-stretch">
         <div class="col-xl-5">
           <div class="card shadow app-card h-100">
