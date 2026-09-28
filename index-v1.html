@@ -952,20 +952,32 @@
         }
 
         focusGeofence(id) {
-          const layer = this.layerGroup.getLayers().find((item) => item.geofenceId === id);
-          if (!layer) {
+          const geofence = this.geofences.find((item) => item.id === id);
+          if (!geofence) {
             return;
-          }
-
-          const bounds = layer.getBounds();
-          if (bounds.isValid()) {
-            this.map.fitBounds(bounds.pad(0.2));
           }
 
           this.activeId = id;
           this.renderLayers();
           this.renderList();
-          layer.openPopup();
+
+          const activeLayer = this.layerGroup
+            .getLayers()
+            .find((item) => item.geofenceId === id);
+          if (!activeLayer) {
+            return;
+          }
+
+          if (typeof activeLayer.bringToFront === "function") {
+            activeLayer.bringToFront();
+          }
+
+          const bounds = activeLayer.getBounds();
+          if (bounds.isValid()) {
+            this.map.fitBounds(bounds.pad(0.2));
+          }
+
+          activeLayer.openPopup();
         }
 
         renderLayers() {
