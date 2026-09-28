@@ -402,12 +402,34 @@
                       placeholder="Contoh: Warehouse Surabaya"
                     />
 
+                    <div class="row g-3 mt-1">
+                      <div class="col-md-6">
+                        <label class="form-label">Tipe Geofence</label>
+                        <select id="geofenceType" class="form-select">
+                          <option value="polygon" selected>Polygon</option>
+                          <option value="circle">Circle</option>
+                        </select>
+                      </div>
+                      <div class="col-md-6" id="geofenceRadiusWrap" style="display: none">
+                        <label class="form-label">Radius (meter)</label>
+                        <input
+                          type="number"
+                          id="geofenceRadius"
+                          class="form-control"
+                          min="1"
+                          step="1"
+                          value="100"
+                          placeholder="Contoh: 100"
+                        />
+                      </div>
+                    </div>
+
                     <label class="form-label mt-3">Coordinates</label>
                     <textarea
                       id="geofenceCoordinates"
                       class="form-control"
                       rows="7"
-                      placeholder="(-7.25847190, 112.75308830), (-7.25847190, 112.75108830), (-7.25647190, 112.75108830), (-7.25721690, 112.75218171)"
+                      placeholder="Masukkan koordinat geofence"
                     ></textarea>
 
                     <div class="d-flex flex-wrap gap-2 mt-3">
@@ -819,6 +841,9 @@
         constructor(options) {
           this.map = options.map;
           this.nameInput = options.nameInput;
+          this.typeInput = options.typeInput;
+          this.radiusInput = options.radiusInput;
+          this.radiusWrap = options.radiusWrap;
           this.coordinatesInput = options.coordinatesInput;
           this.listEl = options.listEl;
           this.countEl = options.countEl;
@@ -842,18 +867,84 @@
           };
 
           this.loadFromStorage();
+          this.bindFieldEvents();
+          this.syncTypeUi();
           this.renderList();
           this.renderLayers();
+        }
+
+        bindFieldEvents() {
+          this.typeInput.addEventListener("change", () => {
+            this.syncTypeUi();
+          });
+        }
+
+        syncTypeUi() {
+          const isCircle = this.typeInput.value === "circle";
+          this.radiusWrap.style.display = isCircle ? "" : "none";
+          this.coordinatesInput.rows = isCircle ? 3 : 7;
+          this.coordinatesInput.placeholder = isCircle
+            ? "Contoh center point:\n(-7.2574719, 112.7520883)"
+            : "Contoh polygon points:\n(-7.25847190, 112.75308830), (-7.25847190, 112.75108830), (-7.25647190, 112.75108830), (-7.25721690, 112.75218171)";
         }
 
         loadFromStorage() {
           try {
             const raw = localStorage.getItem(this.storageKey);
             const parsed = raw ? JSON.parse(raw) : [];
-            this.geofences = Array.isArray(parsed) ? parsed : [];
+            this.geofences = Array.isArray(parsed)
+              ? parsed.map((item) => this.normalizeGeofence(item)).filter(Boolean)
+              : [];
           } catch (error) {
             this.geofences = [];
           }
+        }
+
+        normalizeGeofence(item) {
+          if (!item || !item.id || !item.name || !Array.isArray(item.coordinates)) {
+            return null;
+          }
+
+          const type = item.type === "circle" ? "circle" : "polygon";
+          const coordinates = item.coordinates
+            .map((point) => ({
+              lat: Number(point.lat),
+              lng: Number(point.lng),
+            }))
+            .filter(
+              (point) =>
+                Number.isFinite(point.lat) &&
+                Number.isFinite(point.lng) &&
+                Math.abs(point.lat) <= 90 &&
+                Math.abs(point.lng) <= 180
+            );
+
+          if (type === "circle") {
+            const radius = Number(item.radius);
+            if (coordinates.length < 1 || !Number.isFinite(radius) || radius <= 0) {
+              return null;
+            }
+
+            return {
+              id: item.id,
+              name: item.name,
+              type,
+              radius,
+              coordinates: [coordinates[0]],
+            };
+          }
+
+          if (coordinates.length < 3) {
+            return null;
+          }
+
+          return {
+            id: item.id,
+            name: item.name,
+            type,
+            radius: null,
+            coordinates,
+          };
         }
 
         saveToStorage() {
@@ -862,9 +953,6 @@
 
         parseCoordinateText(text) {
           const matches = [...text.matchAll(/\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/g)];
-          if (matches.length < 3) {
-            throw new Error("Geofence butuh minimal 3 titik dengan format (lat, lng).");
-          }
 
           return matches.map((match) => {
             const lat = Number(match[1]);
@@ -889,11 +977,29 @@
             throw new Error("Nama geofence wajib diisi.");
           }
 
+          const type = this.typeInput.value === "circle" ? "circle" : "polygon";
           const coordinates = this.parseCoordinateText(this.coordinatesInput.value);
+          if (type === "polygon" && coordinates.length < 3) {
+            throw new Error("Geofence polygon butuh minimal 3 titik.");
+          }
+
+          if (type === "circle" && coordinates.length < 1) {
+            throw new Error("Geofence circle butuh 1 titik pusat dengan format (lat, lng).");
+          }
+
+          const radius =
+            type === "circle" ? Number(this.radiusInput.value) : null;
+
+          if (type === "circle" && (!Number.isFinite(radius) || radius <= 0)) {
+            throw new Error("Radius circle harus lebih dari 0 meter.");
+          }
+
           const geofence = {
             id: this.editingId || this.generateId(),
             name,
-            coordinates,
+            type,
+            radius,
+            coordinates: type === "circle" ? [coordinates[0]] : coordinates,
           };
 
           const existingIndex = this.geofences.findIndex(
@@ -937,7 +1043,10 @@
           this.editingId = id;
           this.activeId = id;
           this.nameInput.value = geofence.name;
+          this.typeInput.value = geofence.type || "polygon";
+          this.radiusInput.value = geofence.radius || 100;
           this.coordinatesInput.value = this.formatCoordinates(geofence.coordinates);
+          this.syncTypeUi();
           this.renderLayers();
           this.renderList();
         }
@@ -946,38 +1055,29 @@
           this.editingId = null;
           this.activeId = null;
           this.nameInput.value = "";
+          this.typeInput.value = "polygon";
+          this.radiusInput.value = 100;
           this.coordinatesInput.value = "";
+          this.syncTypeUi();
           this.renderLayers();
           this.renderList();
         }
 
         focusGeofence(id) {
-          const geofence = this.geofences.find((item) => item.id === id);
-          if (!geofence) {
+          const layer = this.layerGroup.getLayers().find((item) => item.geofenceId === id);
+          if (!layer) {
             return;
+          }
+
+          const bounds = layer.getBounds();
+          if (bounds.isValid()) {
+            this.map.fitBounds(bounds.pad(0.2));
           }
 
           this.activeId = id;
           this.renderLayers();
           this.renderList();
-
-          const activeLayer = this.layerGroup
-            .getLayers()
-            .find((item) => item.geofenceId === id);
-          if (!activeLayer) {
-            return;
-          }
-
-          if (typeof activeLayer.bringToFront === "function") {
-            activeLayer.bringToFront();
-          }
-
-          const bounds = activeLayer.getBounds();
-          if (bounds.isValid()) {
-            this.map.fitBounds(bounds.pad(0.2));
-          }
-
-          activeLayer.openPopup();
+          layer.openPopup();
         }
 
         renderLayers() {
@@ -988,17 +1088,32 @@
               geofence.id === (this.activeId || this.editingId)
                 ? this.activeStyle
                 : this.defaultStyle;
-            const polygon = L.polygon(
-              geofence.coordinates.map((point) => [point.lat, point.lng]),
-              style
-            );
+            const layer =
+              geofence.type === "circle"
+                ? L.circle(
+                    [geofence.coordinates[0].lat, geofence.coordinates[0].lng],
+                    {
+                      ...style,
+                      radius: geofence.radius,
+                    }
+                  )
+                : L.polygon(
+                    geofence.coordinates.map((point) => [point.lat, point.lng]),
+                    style
+                  );
 
-            polygon.geofenceId = geofence.id;
-            polygon.bindPopup(
-              `<strong>${this.escapeHtml(geofence.name)}</strong><br/>${geofence.coordinates.length} titik`
-            );
-            polygon.addTo(this.layerGroup);
+            layer.geofenceId = geofence.id;
+            layer.bindPopup(this.buildPopupContent(geofence));
+            layer.addTo(this.layerGroup);
           });
+        }
+
+        buildPopupContent(geofence) {
+          if (geofence.type === "circle") {
+            return `<strong>${this.escapeHtml(geofence.name)}</strong><br/>Circle - radius ${this.escapeHtml(geofence.radius)} m`;
+          }
+
+          return `<strong>${this.escapeHtml(geofence.name)}</strong><br/>Polygon - ${geofence.coordinates.length} titik`;
         }
 
         renderList() {
@@ -1020,7 +1135,7 @@
                   <div class="d-flex justify-content-between align-items-start gap-3">
                     <div>
                       <div class="fw-semibold">${this.escapeHtml(geofence.name)}</div>
-                      <small class="helper-text">${geofence.coordinates.length} titik</small>
+                      <small class="helper-text">${this.describeGeofence(geofence)}</small>
                     </div>
                     <span class="badge text-bg-light">${this.escapeHtml(geofence.id.slice(0, 8))}</span>
                   </div>
@@ -1064,6 +1179,14 @@
           return coordinates
             .map((point) => `(${point.lat}, ${point.lng})`)
             .join(", ");
+        }
+
+        describeGeofence(geofence) {
+          if (geofence.type === "circle") {
+            return `Circle - radius ${geofence.radius} m`;
+          }
+
+          return `Polygon - ${geofence.coordinates.length} titik`;
         }
 
         generateId() {
@@ -1508,6 +1631,9 @@
             mapPointCount: document.getElementById("mapPointCount"),
             mapLineCount: document.getElementById("mapLineCount"),
             geofenceName: document.getElementById("geofenceName"),
+            geofenceType: document.getElementById("geofenceType"),
+            geofenceRadius: document.getElementById("geofenceRadius"),
+            geofenceRadiusWrap: document.getElementById("geofenceRadiusWrap"),
             geofenceCoordinates: document.getElementById("geofenceCoordinates"),
             geofenceList: document.getElementById("geofenceList"),
             geofenceCount: document.getElementById("geofenceCount"),
@@ -1537,6 +1663,9 @@
           this.geofenceManager = new GeofenceManager({
             map: this.mapManager.map,
             nameInput: this.elements.geofenceName,
+            typeInput: this.elements.geofenceType,
+            radiusInput: this.elements.geofenceRadius,
+            radiusWrap: this.elements.geofenceRadiusWrap,
             coordinatesInput: this.elements.geofenceCoordinates,
             listEl: this.elements.geofenceList,
             countEl: this.elements.geofenceCount,
