@@ -151,6 +151,21 @@
         text-align: center;
       }
 
+      .visit-stop-marker {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        background: #dc4c64;
+        border: 2px solid #ffffff;
+        color: #ffffff;
+        font-size: 13px;
+        font-weight: 700;
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+      }
+
       .page-switch-tabs .nav-link {
         border: 0;
         border-radius: 999px;
@@ -459,6 +474,34 @@
                   </div>
                 </div>
               </div>
+
+              <div class="geofence-panel">
+                <div class="d-flex flex-wrap justify-content-between gap-3 mb-3">
+                  <div>
+                    <h5 class="mb-1">Daftar Kunjungan Kendaraan</h5>
+                    <div class="helper-text">
+                      Tambahkan geofence dari Daftar Geofence lewat tombol
+                      "Tambah ke Kunjungan", atur urutannya, lalu buat polyline
+                      yang melewati setiap geofence mengikuti jalan (OSRM).
+                    </div>
+                  </div>
+                  <span class="badge text-bg-warning align-self-start">
+                    Kunjungan: <span id="visitCount">0</span>
+                  </span>
+                </div>
+
+                <div id="visitList" class="geofence-list"></div>
+
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                  <button class="btn btn-warning" id="buildRouteBtn" type="button">
+                    Buat Polyline via OSRM
+                  </button>
+                  <button class="btn btn-outline-light" id="clearVisitBtn" type="button">
+                    Kosongkan Daftar
+                  </button>
+                  <small id="visitStatus" class="helper-text"></small>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -612,6 +655,7 @@
           this.map = L.map(options.mapId).setView(this.defaultCenter, 12);
           this.drawnItems = new L.FeatureGroup().addTo(this.map);
           this.pointMarkers = new L.LayerGroup().addTo(this.map);
+          this.visitMarkers = new L.LayerGroup().addTo(this.map);
 
           L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
             maxZoom: 19,
@@ -717,6 +761,7 @@
 
         clear() {
           this.drawnItems.clearLayers();
+          this.visitMarkers.clearLayers();
           this.syncMapToGeoJson();
           this.fitToDrawnItems();
         }
@@ -826,6 +871,73 @@
           this.lineCountEl.innerText = lines.length;
         }
 
+        async fetchOsrmRoute(points) {
+          const path = points.map((p) => `${p.lng},${p.lat}`).join(";");
+          const url =
+            `https://router.project-osrm.org/route/v1/driving/${path}` +
+            `?overview=full&geometries=geojson`;
+
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`OSRM error ${response.status}`);
+          }
+
+          const data = await response.json();
+          const coordinates = data?.routes?.[0]?.geometry?.coordinates;
+          if (data.code !== "Ok" || !Array.isArray(coordinates) || coordinates.length < 2) {
+            throw new Error("Rute OSRM tidak ditemukan.");
+          }
+
+          return coordinates.map(([lng, lat]) => L.latLng(lat, lng));
+        }
+
+        // Buat satu polyline yang melewati semua stop berurutan.
+        // Request dipecah per 25 titik agar aman untuk batas OSRM.
+        async buildRouteThroughPoints(stops) {
+          const chunkSize = 25;
+          const latLngs = [];
+          let fallbackCount = 0;
+
+          for (let i = 0; i < stops.length - 1; i += chunkSize - 1) {
+            const chunk = stops.slice(i, i + chunkSize);
+            let segment;
+
+            try {
+              segment = await this.fetchOsrmRoute(chunk);
+            } catch (error) {
+              segment = chunk.map((p) => L.latLng(p.lat, p.lng));
+              fallbackCount += 1;
+            }
+
+            latLngs.push(...(latLngs.length ? segment.slice(1) : segment));
+          }
+
+          this.drawnItems.clearLayers();
+          this.drawnItems.addLayer(
+            L.polyline(latLngs, { color: "#ffb703", weight: 4, opacity: 0.95 })
+          );
+
+          this.visitMarkers.clearLayers();
+          stops.forEach((stop, index) => {
+            L.marker([stop.lat, stop.lng], {
+              zIndexOffset: 1000,
+              icon: L.divIcon({
+                className: "",
+                html: `<div class="visit-stop-marker">${index + 1}</div>`,
+                iconSize: [28, 28],
+                iconAnchor: [14, 14],
+              }),
+            })
+              .bindTooltip(stop.name || `Stop ${index + 1}`)
+              .addTo(this.visitMarkers);
+          });
+
+          this.syncMapToGeoJson();
+          this.fitToDrawnItems();
+
+          return { pointCount: latLngs.length, fallbackCount };
+        }
+
         fitToDrawnItems() {
           const bounds = this.drawnItems.getBounds();
 
@@ -848,6 +960,8 @@
           this.listEl = options.listEl;
           this.countEl = options.countEl;
           this.modeEl = options.modeEl;
+          this.onAddVisit = options.onAddVisit;
+          this.onChange = null;
           this.storageKey = "geojson-mapper-geofences";
           this.layerGroup = new L.FeatureGroup().addTo(this.map);
           this.geofences = [];
@@ -949,6 +1063,21 @@
 
         saveToStorage() {
           localStorage.setItem(this.storageKey, JSON.stringify(this.geofences));
+          if (this.onChange) {
+            this.onChange();
+          }
+        }
+
+        getCenter(geofence) {
+          if (geofence.type === "circle") {
+            return geofence.coordinates[0];
+          }
+
+          const total = geofence.coordinates.length;
+          return {
+            lat: geofence.coordinates.reduce((sum, p) => sum + p.lat, 0) / total,
+            lng: geofence.coordinates.reduce((sum, p) => sum + p.lng, 0) / total,
+          };
         }
 
         parseCoordinateText(text) {
@@ -1143,6 +1272,9 @@
                     <button class="btn btn-sm btn-outline-light" type="button" data-geofence-action="focus" data-geofence-id="${geofence.id}">
                       Fokus
                     </button>
+                    <button class="btn btn-sm btn-outline-success" type="button" data-geofence-action="visit" data-geofence-id="${geofence.id}">
+                      Tambah ke Kunjungan
+                    </button>
                     <button class="btn btn-sm btn-outline-warning" type="button" data-geofence-action="edit" data-geofence-id="${geofence.id}">
                       Update
                     </button>
@@ -1167,6 +1299,10 @@
 
             if (geofenceAction === "focus") {
               this.focusGeofence(geofenceId);
+            } else if (geofenceAction === "visit") {
+              if (this.onAddVisit) {
+                this.onAddVisit(geofenceId);
+              }
             } else if (geofenceAction === "edit") {
               this.startEditing(geofenceId);
             } else if (geofenceAction === "delete") {
@@ -1200,6 +1336,199 @@
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#39;");
+        }
+      }
+
+      class VisitPlanManager {
+        constructor(options) {
+          this.geofenceManager = options.geofenceManager;
+          this.mapManager = options.mapManager;
+          this.listEl = options.listEl;
+          this.countEl = options.countEl;
+          this.statusEl = options.statusEl;
+          this.buildBtn = options.buildBtn;
+          this.clearBtn = options.clearBtn;
+          this.storageKey = "geojson-mapper-visits";
+          this.visits = [];
+
+          this.load();
+          this.bindEvents();
+          this.render();
+        }
+
+        load() {
+          try {
+            const parsed = JSON.parse(localStorage.getItem(this.storageKey) || "[]");
+            this.visits = Array.isArray(parsed)
+              ? parsed.filter((item) => item && item.uid && item.geofenceId)
+              : [];
+          } catch (error) {
+            this.visits = [];
+          }
+        }
+
+        save() {
+          try {
+            localStorage.setItem(this.storageKey, JSON.stringify(this.visits));
+          } catch (error) {
+            // abaikan jika storage tidak tersedia
+          }
+        }
+
+        bindEvents() {
+          this.listEl.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-visit-action]");
+            if (!button) {
+              return;
+            }
+
+            const { visitAction, visitUid } = button.dataset;
+            if (visitAction === "remove") {
+              this.remove(visitUid);
+            } else if (visitAction === "up") {
+              this.move(visitUid, -1);
+            } else if (visitAction === "down") {
+              this.move(visitUid, 1);
+            }
+          });
+
+          this.clearBtn.addEventListener("click", () => this.clear());
+
+          this.buildBtn.addEventListener("click", async () => {
+            try {
+              await this.buildRoute();
+            } catch (error) {
+              this.setStatus(error.message);
+              alert(error.message);
+            }
+          });
+        }
+
+        setStatus(text) {
+          this.statusEl.innerText = text || "";
+        }
+
+        add(geofenceId) {
+          this.visits.push({
+            uid: `v-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+            geofenceId,
+          });
+          this.save();
+          this.render();
+          this.setStatus("");
+        }
+
+        remove(uid) {
+          this.visits = this.visits.filter((item) => item.uid !== uid);
+          this.save();
+          this.render();
+        }
+
+        move(uid, direction) {
+          const index = this.visits.findIndex((item) => item.uid === uid);
+          const target = index + direction;
+          if (index < 0 || target < 0 || target >= this.visits.length) {
+            return;
+          }
+
+          [this.visits[index], this.visits[target]] = [this.visits[target], this.visits[index]];
+          this.save();
+          this.render();
+        }
+
+        clear() {
+          this.visits = [];
+          this.save();
+          this.render();
+          this.setStatus("");
+        }
+
+        // Hapus kunjungan yang geofence-nya sudah dihapus, lalu gabungkan datanya.
+        resolve() {
+          const geofences = this.geofenceManager.geofences;
+          const before = this.visits.length;
+
+          this.visits = this.visits.filter((item) =>
+            geofences.some((geofence) => geofence.id === item.geofenceId)
+          );
+          if (this.visits.length !== before) {
+            this.save();
+          }
+
+          return this.visits.map((item) => ({
+            visit: item,
+            geofence: geofences.find((geofence) => geofence.id === item.geofenceId),
+          }));
+        }
+
+        render() {
+          const items = this.resolve();
+          this.countEl.innerText = items.length;
+
+          if (items.length === 0) {
+            this.listEl.innerHTML =
+              '<div class="geofence-empty">Belum ada geofence dalam daftar kunjungan.</div>';
+            return;
+          }
+
+          const escape = (value) => this.geofenceManager.escapeHtml(value);
+
+          this.listEl.innerHTML = items
+            .map(({ visit, geofence }, index) => {
+              const isFirst = index === 0;
+              const isLast = index === items.length - 1;
+              return `
+                <div class="geofence-item">
+                  <div class="d-flex justify-content-between align-items-center gap-3">
+                    <div>
+                      <span class="badge text-bg-danger me-2">${index + 1}</span>
+                      <span class="fw-semibold">${escape(geofence.name)}</span>
+                      <small class="helper-text ms-2">${this.geofenceManager.describeGeofence(geofence)}</small>
+                    </div>
+                    <div class="geofence-actions">
+                      <button class="btn btn-sm btn-outline-light" type="button" data-visit-action="up" data-visit-uid="${visit.uid}" ${isFirst ? "disabled" : ""}>&uarr;</button>
+                      <button class="btn btn-sm btn-outline-light" type="button" data-visit-action="down" data-visit-uid="${visit.uid}" ${isLast ? "disabled" : ""}>&darr;</button>
+                      <button class="btn btn-sm btn-outline-danger" type="button" data-visit-action="remove" data-visit-uid="${visit.uid}">Hapus</button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            })
+            .join("");
+        }
+
+        async buildRoute() {
+          const stops = [];
+
+          this.resolve().forEach(({ geofence }) => {
+            const center = this.geofenceManager.getCenter(geofence);
+            const previous = stops[stops.length - 1];
+
+            // lewati stop berurutan di titik yang sama
+            if (previous && previous.lat === center.lat && previous.lng === center.lng) {
+              return;
+            }
+
+            stops.push({ name: geofence.name, lat: center.lat, lng: center.lng });
+          });
+
+          if (stops.length < 2) {
+            throw new Error("Minimal 2 geofence berbeda di daftar kunjungan.");
+          }
+
+          this.buildBtn.disabled = true;
+          this.setStatus("Menghitung rute lewat OSRM...");
+
+          try {
+            const result = await this.mapManager.buildRouteThroughPoints(stops);
+            this.setStatus(
+              result.fallbackCount > 0
+                ? `Selesai, ${result.fallbackCount} segmen memakai garis lurus karena OSRM gagal.`
+                : `Selesai: ${stops.length} stop, ${result.pointCount} titik polyline.`
+            );
+          } finally {
+            this.buildBtn.disabled = false;
+          }
         }
       }
 
@@ -1638,6 +1967,11 @@
             geofenceList: document.getElementById("geofenceList"),
             geofenceCount: document.getElementById("geofenceCount"),
             geofenceMode: document.getElementById("geofenceMode"),
+            visitList: document.getElementById("visitList"),
+            visitCount: document.getElementById("visitCount"),
+            visitStatus: document.getElementById("visitStatus"),
+            buildRouteBtn: document.getElementById("buildRouteBtn"),
+            clearVisitBtn: document.getElementById("clearVisitBtn"),
             loadGeoJsonBtn: document.getElementById("loadGeoJsonBtn"),
             clearPolylineBtn: document.getElementById("clearPolylineBtn"),
             saveGeofenceBtn: document.getElementById("saveGeofenceBtn"),
@@ -1670,8 +2004,21 @@
             listEl: this.elements.geofenceList,
             countEl: this.elements.geofenceCount,
             modeEl: this.elements.geofenceMode,
+            onAddVisit: (geofenceId) => this.visitPlanManager.add(geofenceId),
           });
           this.geofenceManager.bindListEvents();
+
+          this.visitPlanManager = new VisitPlanManager({
+            geofenceManager: this.geofenceManager,
+            mapManager: this.mapManager,
+            listEl: this.elements.visitList,
+            countEl: this.elements.visitCount,
+            statusEl: this.elements.visitStatus,
+            buildBtn: this.elements.buildRouteBtn,
+            clearBtn: this.elements.clearVisitBtn,
+          });
+          // sinkronkan daftar kunjungan saat geofence diubah/dihapus
+          this.geofenceManager.onChange = () => this.visitPlanManager.render();
 
           this.bindEvents();
         }
