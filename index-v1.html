@@ -198,6 +198,19 @@
           min-width: 200px;
         }
       }
+      .geofence-label {
+        background: rgba(15, 23, 42, 0.8);
+        border: none;
+        box-shadow: none;
+        color: #fff;
+        font-weight: 600;
+        font-size: 12px;
+        padding: 2px 6px;
+        pointer-events: none;
+      }
+      .geofence-label::before {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -1237,6 +1250,11 @@
 
             layer.geofenceId = geofence.id;
             layer.bindPopup(this.buildPopupContent(geofence));
+            layer.bindTooltip(this.escapeHtml(geofence.name), {
+              permanent: true,
+              direction: "center",
+              className: "geofence-label",
+            });
             layer.addTo(this.layerGroup);
           });
         }
