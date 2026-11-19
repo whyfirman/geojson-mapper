@@ -114,6 +114,25 @@
         box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
       }
 
+      .route-point-marker {
+        position: relative;
+      }
+
+      .route-point-badge {
+        position: absolute;
+        top: -7px;
+        right: -7px;
+        min-width: 15px;
+        height: 15px;
+        padding: 0 3px;
+        border-radius: 999px;
+        background: #8c6d00;
+        color: #fff;
+        font-size: 9px;
+        line-height: 15px;
+        text-align: center;
+      }
+
       .geofence-panel {
         margin-top: 1rem;
         padding: 1rem;
@@ -168,6 +187,25 @@
         font-size: 13px;
         font-weight: 700;
         box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+      }
+
+      .visit-stop-marker {
+        position: relative;
+      }
+
+      .visit-stop-badge {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        border-radius: 999px;
+        background: #212529;
+        border: 2px solid #ffffff;
+        font-size: 10px;
+        line-height: 14px;
+        text-align: center;
       }
 
       .page-switch-tabs .nav-link {
@@ -865,18 +903,40 @@
         renderPointMarkers(geoJson) {
           this.pointMarkers.clearLayers();
 
+          // Titik dengan koordinat sama (~1 m) digabung jadi satu marker;
+          // hover menampilkan semua nomor urut titik tersebut.
+          const groups = new Map();
           GeoJsonService.extractCoordinates(geoJson).forEach((coordinate, index) => {
-            const marker = L.marker([Number(coordinate[1]), Number(coordinate[0])], {
-              interactive: false,
+            const lat = Number(coordinate[1]);
+            const lng = Number(coordinate[0]);
+            const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+            if (!groups.has(key)) {
+              groups.set(key, { lat, lng, orders: [] });
+            }
+            groups.get(key).orders.push(index + 1);
+          });
+
+          groups.forEach(({ lat, lng, orders }) => {
+            const badge =
+              orders.length > 1
+                ? `<span class="route-point-badge">${orders.length}</span>`
+                : "";
+            const shown = orders.slice(0, 30).join(", ");
+            const more = orders.length > 30 ? ` … (+${orders.length - 30})` : "";
+
+            L.marker([lat, lng], {
               icon: L.divIcon({
                 className: "",
-                html: `<div class="route-point-marker">${index + 1}</div>`,
+                html: `<div class="route-point-marker">${orders[0]}${badge}</div>`,
                 iconSize: [22, 22],
                 iconAnchor: [11, 11],
               }),
-            });
-
-            marker.addTo(this.pointMarkers);
+            })
+              .bindTooltip(
+                `Titik ke-${shown}${more}` +
+                  (orders.length > 1 ? ` (${orders.length}x lewat)` : "")
+              )
+              .addTo(this.pointMarkers);
           });
         }
 
@@ -935,17 +995,40 @@
           );
 
           this.visitMarkers.clearLayers();
+          // Kelompokkan stop di koordinat yang sama (mis. pool-P1-pool-P1)
+          // jadi satu marker; tooltip menampilkan semua urutan kunjungannya.
+          const groups = new Map();
           stops.forEach((stop, index) => {
+            const key = `${stop.lat},${stop.lng}`;
+            if (!groups.has(key)) {
+              groups.set(key, { stop, orders: [] });
+            }
+            groups.get(key).orders.push(index + 1);
+          });
+
+          groups.forEach(({ stop, orders }) => {
+            const badge =
+              orders.length > 1
+                ? `<span class="visit-stop-badge">${orders.length}</span>`
+                : "";
+            const escapeHtml = (text) =>
+              String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+            const label = escapeHtml(stop.name || `Stop ${orders[0]}`);
+            const tooltip =
+              `<strong>${label}</strong><br>` +
+              `Kunjungan ke-${orders.join(", ")}` +
+              (orders.length > 1 ? ` (${orders.length}x)` : "");
+
             L.marker([stop.lat, stop.lng], {
               zIndexOffset: 1000,
               icon: L.divIcon({
                 className: "",
-                html: `<div class="visit-stop-marker">${index + 1}</div>`,
+                html: `<div class="visit-stop-marker">${orders[0]}${badge}</div>`,
                 iconSize: [28, 28],
                 iconAnchor: [14, 14],
               }),
             })
-              .bindTooltip(stop.name || `Stop ${index + 1}`)
+              .bindTooltip(tooltip)
               .addTo(this.visitMarkers);
           });
 
