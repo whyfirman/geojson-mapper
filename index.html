@@ -41,6 +41,10 @@
         background-color: #dc4c64 !important;
       }
 
+      tr.stop-row.pause-row td {
+        background-color: #fd7e14 !important;
+      }
+
       .app-card {
         border: 0;
         border-radius: 1.25rem;
@@ -110,6 +114,25 @@
         box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
       }
 
+      .route-point-marker {
+        position: relative;
+      }
+
+      .route-point-badge {
+        position: absolute;
+        top: -7px;
+        right: -7px;
+        min-width: 15px;
+        height: 15px;
+        padding: 0 3px;
+        border-radius: 999px;
+        background: #8c6d00;
+        color: #fff;
+        font-size: 9px;
+        line-height: 15px;
+        text-align: center;
+      }
+
       .geofence-panel {
         margin-top: 1rem;
         padding: 1rem;
@@ -151,6 +174,40 @@
         text-align: center;
       }
 
+      .visit-stop-marker {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        background: #dc4c64;
+        border: 2px solid #ffffff;
+        color: #ffffff;
+        font-size: 13px;
+        font-weight: 700;
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+      }
+
+      .visit-stop-marker {
+        position: relative;
+      }
+
+      .visit-stop-badge {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        border-radius: 999px;
+        background: #212529;
+        border: 2px solid #ffffff;
+        font-size: 10px;
+        line-height: 14px;
+        text-align: center;
+      }
+
       .page-switch-tabs .nav-link {
         border: 0;
         border-radius: 999px;
@@ -170,19 +227,6 @@
         box-shadow: 0 10px 20px rgba(0, 0, 0, 0.16);
       }
 
-      #result.table-responsive {
-        max-height: 70vh;
-        overflow-y: auto;
-      }
-
-      #result table thead th {
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        background: #f8f9fa;
-        box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08);
-      }
-
       @media (max-width: 991.98px) {
         :root {
           --map-height: 420px;
@@ -192,25 +236,25 @@
           min-width: 200px;
         }
       }
+      .geofence-label {
+        background: rgba(15, 23, 42, 0.8);
+        border: none;
+        box-shadow: none;
+        color: #fff;
+        font-weight: 600;
+        font-size: 12px;
+        padding: 2px 6px;
+        pointer-events: none;
+      }
+      .geofence-label::before {
+        display: none;
+      }
     </style>
   </head>
   <body>
     <div class="container-fluid py-4 px-lg-4">
-      <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-4">
-        <div>
-          <h3 class="mb-1">GeoJSON Mapper Workspace</h3>
-          <p class="text-secondary mb-0">
-            Gunakan tab ini untuk berpindah antara halaman utama dan `index-v1`.
-          </p>
-        </div>
-        <ul class="nav nav-pills page-switch-tabs gap-2">
-          <li class="nav-item">
-            <a class="nav-link active" href="index.html" aria-current="page">Index</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="index-v1.html">Index V1</a>
-          </li>
-        </ul>
+      <div class="mb-4">
+        <h3 class="mb-0">GeoJSON Mapper Workspace</h3>
       </div>
 
       <div class="row g-4 align-items-stretch">
@@ -356,16 +400,6 @@
               </div>
 
               <div class="row mt-3">
-                <div class="col-md-6">
-                  <label class="form-label">Interval Temperature (per row)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    id="intervalTemperature"
-                    class="form-control"
-                    value="1"
-                  />
-                </div>
                 <div class="col-md-6">
                   <label class="form-label">Interval Fuel (cm per row)</label>
                   <input
@@ -518,6 +552,45 @@
                   </div>
                 </div>
               </div>
+
+              <div class="geofence-panel">
+                <div class="d-flex flex-wrap justify-content-between gap-3 mb-3">
+                  <div>
+                    <h5 class="mb-1">Daftar Kunjungan Kendaraan</h5>
+                    <div class="helper-text">
+                      Tambahkan geofence dari Daftar Geofence lewat tombol
+                      "Tambah ke Kunjungan", atur urutannya, lalu buat polyline
+                      yang melewati setiap geofence mengikuti jalan (OSRM).
+                    </div>
+                  </div>
+                  <span class="badge text-bg-warning align-self-start">
+                    Kunjungan: <span id="visitCount">0</span>
+                  </span>
+                </div>
+
+                <div id="visitList" class="geofence-list"></div>
+
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                  <div class="input-group" style="width: 270px">
+                    <span class="input-group-text">Maks jarak titik</span>
+                    <input
+                      type="number"
+                      id="routeMaxSpacing"
+                      class="form-control"
+                      value="50"
+                      min="0"
+                    />
+                    <span class="input-group-text">m</span>
+                  </div>
+                  <button class="btn btn-warning" id="buildRouteBtn" type="button">
+                    Buat Polyline via OSRM
+                  </button>
+                  <button class="btn btn-outline-light" id="clearVisitBtn" type="button">
+                    Kosongkan Daftar
+                  </button>
+                  <small id="visitStatus" class="helper-text"></small>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -527,39 +600,54 @@
         <div class="card-body p-4">
           <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
             <h4 class="mb-0">Hasil Tabel Koordinat</h4>
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <input
-                type="text"
-                id="apiKeyInput"
-                class="form-control form-control-sm"
-                placeholder="Masukkan X-API-Key"
-                style="min-width: 240px"
-              />
-              <button
-                class="btn btn-sm btn-outline-primary"
-                id="uploadApiBtn"
-                type="button"
-              >
-                Upload to API
-              </button>
-              <button
-                class="btn btn-sm btn-outline-secondary"
-                id="clearTableBtn"
-                type="button"
-              >
-                Clear Table
-              </button>
-              <button class="btn btn-sm btn-success" id="exportTxtBtn" type="button">
-                Export TXT
-              </button>
-            </div>
+            <button class="btn btn-sm btn-success" id="exportTxtBtn" type="button">
+              Export TXT
+            </button>
           </div>
-          <div id="apiUploadStatus" class="small text-secondary mt-2"></div>
           <div id="result" class="table-responsive mt-3"></div>
         </div>
       </div>
     </div>
 
+    <div
+      class="modal fade"
+      id="stopDurationModal"
+      tabindex="-1"
+      aria-labelledby="stopDurationModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form id="stopDurationForm">
+            <div class="modal-header">
+              <h5 class="modal-title" id="stopDurationModalLabel">Durasi Stop</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <label for="stopDurationInput" class="form-label">Masukkan durasi stop dalam menit</label>
+              <input
+                type="number"
+                class="form-control"
+                id="stopDurationInput"
+                min="0"
+                value="2"
+                step="1"
+                required
+              />
+              <div id="stopDurationError" class="text-danger small mt-2 d-none">
+                Durasi stop harus berupa angka menit 0 atau lebih.
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+              <button type="submit" class="btn btn-primary">Simpan</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
@@ -656,6 +744,7 @@
           this.map = L.map(options.mapId).setView(this.defaultCenter, 12);
           this.drawnItems = new L.FeatureGroup().addTo(this.map);
           this.pointMarkers = new L.LayerGroup().addTo(this.map);
+          this.visitMarkers = new L.LayerGroup().addTo(this.map);
 
           L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
             maxZoom: 19,
@@ -761,6 +850,7 @@
 
         clear() {
           this.drawnItems.clearLayers();
+          this.visitMarkers.clearLayers();
           this.syncMapToGeoJson();
           this.fitToDrawnItems();
         }
@@ -847,18 +937,40 @@
         renderPointMarkers(geoJson) {
           this.pointMarkers.clearLayers();
 
+          // Titik dengan koordinat sama (~1 m) digabung jadi satu marker;
+          // hover menampilkan semua nomor urut titik tersebut.
+          const groups = new Map();
           GeoJsonService.extractCoordinates(geoJson).forEach((coordinate, index) => {
-            const marker = L.marker([Number(coordinate[1]), Number(coordinate[0])], {
-              interactive: false,
+            const lat = Number(coordinate[1]);
+            const lng = Number(coordinate[0]);
+            const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+            if (!groups.has(key)) {
+              groups.set(key, { lat, lng, orders: [] });
+            }
+            groups.get(key).orders.push(index + 1);
+          });
+
+          groups.forEach(({ lat, lng, orders }) => {
+            const badge =
+              orders.length > 1
+                ? `<span class="route-point-badge">${orders.length}</span>`
+                : "";
+            const shown = orders.slice(0, 30).join(", ");
+            const more = orders.length > 30 ? ` … (+${orders.length - 30})` : "";
+
+            L.marker([lat, lng], {
               icon: L.divIcon({
                 className: "",
-                html: `<div class="route-point-marker">${index + 1}</div>`,
+                html: `<div class="route-point-marker">${orders[0]}${badge}</div>`,
                 iconSize: [22, 22],
                 iconAnchor: [11, 11],
               }),
-            });
-
-            marker.addTo(this.pointMarkers);
+            })
+              .bindTooltip(
+                `Titik ke-${shown}${more}` +
+                  (orders.length > 1 ? ` (${orders.length}x lewat)` : "")
+              )
+              .addTo(this.pointMarkers);
           });
         }
 
@@ -868,6 +980,122 @@
 
           this.pointCountEl.innerText = pointCount;
           this.lineCountEl.innerText = lines.length;
+        }
+
+        async fetchOsrmRoute(points) {
+          const path = points.map((p) => `${p.lng},${p.lat}`).join(";");
+          const url =
+            `https://router.project-osrm.org/route/v1/driving/${path}` +
+            `?overview=full&geometries=geojson`;
+
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`OSRM error ${response.status}`);
+          }
+
+          const data = await response.json();
+          const coordinates = data?.routes?.[0]?.geometry?.coordinates;
+          if (data.code !== "Ok" || !Array.isArray(coordinates) || coordinates.length < 2) {
+            throw new Error("Rute OSRM tidak ditemukan.");
+          }
+
+          return coordinates.map(([lng, lat]) => L.latLng(lat, lng));
+        }
+
+        // Buat satu polyline yang melewati semua stop berurutan.
+        // Request dipecah per 25 titik agar aman untuk batas OSRM.
+        async buildRouteThroughPoints(stops) {
+          const chunkSize = 25;
+          const latLngs = [];
+          let fallbackCount = 0;
+
+          for (let i = 0; i < stops.length - 1; i += chunkSize - 1) {
+            const chunk = stops.slice(i, i + chunkSize);
+            let segment;
+
+            try {
+              segment = await this.fetchOsrmRoute(chunk);
+            } catch (error) {
+              segment = chunk.map((p) => L.latLng(p.lat, p.lng));
+              fallbackCount += 1;
+            }
+
+            latLngs.push(...(latLngs.length ? segment.slice(1) : segment));
+          }
+
+          // Sisipkan titik di segmen panjang agar jarak antar titik <= maxSpacing
+          // (0 = nonaktif), supaya jalan lurus panjang tidak hanya 1-2 titik.
+          const maxSpacing = Number(
+            document.getElementById("routeMaxSpacing")?.value
+          );
+          if (maxSpacing > 0) {
+            const dense = [latLngs[0]];
+            for (let i = 1; i < latLngs.length; i++) {
+              const from = latLngs[i - 1];
+              const to = latLngs[i];
+              const parts = Math.ceil(from.distanceTo(to) / maxSpacing);
+              for (let k = 1; k < parts; k++) {
+                const t = k / parts;
+                dense.push(
+                  L.latLng(
+                    from.lat + (to.lat - from.lat) * t,
+                    from.lng + (to.lng - from.lng) * t
+                  )
+                );
+              }
+              dense.push(to);
+            }
+            latLngs.length = 0;
+            latLngs.push(...dense);
+          }
+
+          this.drawnItems.clearLayers();
+          this.drawnItems.addLayer(
+            L.polyline(latLngs, { color: "#ffb703", weight: 4, opacity: 0.95 })
+          );
+
+          this.visitMarkers.clearLayers();
+          // Kelompokkan stop di koordinat yang sama (mis. pool-P1-pool-P1)
+          // jadi satu marker; tooltip menampilkan semua urutan kunjungannya.
+          const groups = new Map();
+          stops.forEach((stop, index) => {
+            const key = `${stop.lat},${stop.lng}`;
+            if (!groups.has(key)) {
+              groups.set(key, { stop, orders: [] });
+            }
+            groups.get(key).orders.push(index + 1);
+          });
+
+          groups.forEach(({ stop, orders }) => {
+            const badge =
+              orders.length > 1
+                ? `<span class="visit-stop-badge">${orders.length}</span>`
+                : "";
+            const escapeHtml = (text) =>
+              String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+            const label = escapeHtml(stop.name || `Stop ${orders[0]}`);
+            const tooltip =
+              `<strong>${label}</strong><br>` +
+              `Kunjungan ke-${orders.join(", ")}` +
+              (orders.length > 1 ? ` (${orders.length}x)` : "");
+
+            L.marker([stop.lat, stop.lng], {
+              zIndexOffset: 1000,
+              icon: L.divIcon({
+                className: "",
+                html: `<div class="visit-stop-marker">${orders[0]}${badge}</div>`,
+                iconSize: [28, 28],
+                iconAnchor: [14, 14],
+              }),
+            })
+              .bindTooltip(tooltip)
+              .addTo(this.visitMarkers);
+          });
+
+          this.syncMapToGeoJson();
+          this.fitToDrawnItems();
+
+          return { pointCount: latLngs.length, fallbackCount };
         }
 
         fitToDrawnItems() {
@@ -892,6 +1120,8 @@
           this.listEl = options.listEl;
           this.countEl = options.countEl;
           this.modeEl = options.modeEl;
+          this.onAddVisit = options.onAddVisit;
+          this.onChange = null;
           this.storageKey = "geojson-mapper-geofences";
           this.layerGroup = new L.FeatureGroup().addTo(this.map);
           this.geofences = [];
@@ -993,6 +1223,21 @@
 
         saveToStorage() {
           localStorage.setItem(this.storageKey, JSON.stringify(this.geofences));
+          if (this.onChange) {
+            this.onChange();
+          }
+        }
+
+        getCenter(geofence) {
+          if (geofence.type === "circle") {
+            return geofence.coordinates[0];
+          }
+
+          const total = geofence.coordinates.length;
+          return {
+            lat: geofence.coordinates.reduce((sum, p) => sum + p.lat, 0) / total,
+            lng: geofence.coordinates.reduce((sum, p) => sum + p.lng, 0) / total,
+          };
         }
 
         parseCoordinateText(text) {
@@ -1148,16 +1393,21 @@
 
             layer.geofenceId = geofence.id;
             layer.bindPopup(this.buildPopupContent(geofence));
+            layer.bindTooltip(this.escapeHtml(geofence.name), {
+              permanent: true,
+              direction: "center",
+              className: "geofence-label",
+            });
             layer.addTo(this.layerGroup);
           });
         }
 
         buildPopupContent(geofence) {
           if (geofence.type === "circle") {
-            return `<strong>${this.escapeHtml(geofence.name)}</strong><br/>Circle • radius ${this.escapeHtml(geofence.radius)} m`;
+            return `<strong>${this.escapeHtml(geofence.name)}</strong><br/>Circle - radius ${this.escapeHtml(geofence.radius)} m`;
           }
 
-          return `<strong>${this.escapeHtml(geofence.name)}</strong><br/>Polygon • ${geofence.coordinates.length} titik`;
+          return `<strong>${this.escapeHtml(geofence.name)}</strong><br/>Polygon - ${geofence.coordinates.length} titik`;
         }
 
         renderList() {
@@ -1187,6 +1437,9 @@
                     <button class="btn btn-sm btn-outline-light" type="button" data-geofence-action="focus" data-geofence-id="${geofence.id}">
                       Fokus
                     </button>
+                    <button class="btn btn-sm btn-outline-success" type="button" data-geofence-action="visit" data-geofence-id="${geofence.id}">
+                      Tambah ke Kunjungan
+                    </button>
                     <button class="btn btn-sm btn-outline-warning" type="button" data-geofence-action="edit" data-geofence-id="${geofence.id}">
                       Update
                     </button>
@@ -1211,6 +1464,10 @@
 
             if (geofenceAction === "focus") {
               this.focusGeofence(geofenceId);
+            } else if (geofenceAction === "visit") {
+              if (this.onAddVisit) {
+                this.onAddVisit(geofenceId);
+              }
             } else if (geofenceAction === "edit") {
               this.startEditing(geofenceId);
             } else if (geofenceAction === "delete") {
@@ -1227,10 +1484,10 @@
 
         describeGeofence(geofence) {
           if (geofence.type === "circle") {
-            return `Circle • radius ${geofence.radius} m`;
+            return `Circle - radius ${geofence.radius} m`;
           }
 
-          return `Polygon • ${geofence.coordinates.length} titik`;
+          return `Polygon - ${geofence.coordinates.length} titik`;
         }
 
         generateId() {
@@ -1247,48 +1504,235 @@
         }
       }
 
+      class VisitPlanManager {
+        constructor(options) {
+          this.geofenceManager = options.geofenceManager;
+          this.mapManager = options.mapManager;
+          this.listEl = options.listEl;
+          this.countEl = options.countEl;
+          this.statusEl = options.statusEl;
+          this.buildBtn = options.buildBtn;
+          this.clearBtn = options.clearBtn;
+          this.storageKey = "geojson-mapper-visits";
+          this.visits = [];
+
+          this.load();
+          this.bindEvents();
+          this.render();
+        }
+
+        load() {
+          try {
+            const parsed = JSON.parse(localStorage.getItem(this.storageKey) || "[]");
+            this.visits = Array.isArray(parsed)
+              ? parsed.filter((item) => item && item.uid && item.geofenceId)
+              : [];
+          } catch (error) {
+            this.visits = [];
+          }
+        }
+
+        save() {
+          try {
+            localStorage.setItem(this.storageKey, JSON.stringify(this.visits));
+          } catch (error) {
+            // abaikan jika storage tidak tersedia
+          }
+        }
+
+        bindEvents() {
+          this.listEl.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-visit-action]");
+            if (!button) {
+              return;
+            }
+
+            const { visitAction, visitUid } = button.dataset;
+            if (visitAction === "remove") {
+              this.remove(visitUid);
+            } else if (visitAction === "up") {
+              this.move(visitUid, -1);
+            } else if (visitAction === "down") {
+              this.move(visitUid, 1);
+            }
+          });
+
+          this.clearBtn.addEventListener("click", () => this.clear());
+
+          this.buildBtn.addEventListener("click", async () => {
+            try {
+              await this.buildRoute();
+            } catch (error) {
+              this.setStatus(error.message);
+              alert(error.message);
+            }
+          });
+        }
+
+        setStatus(text) {
+          this.statusEl.innerText = text || "";
+        }
+
+        add(geofenceId) {
+          this.visits.push({
+            uid: `v-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+            geofenceId,
+          });
+          this.save();
+          this.render();
+          this.setStatus("");
+        }
+
+        remove(uid) {
+          this.visits = this.visits.filter((item) => item.uid !== uid);
+          this.save();
+          this.render();
+        }
+
+        move(uid, direction) {
+          const index = this.visits.findIndex((item) => item.uid === uid);
+          const target = index + direction;
+          if (index < 0 || target < 0 || target >= this.visits.length) {
+            return;
+          }
+
+          [this.visits[index], this.visits[target]] = [this.visits[target], this.visits[index]];
+          this.save();
+          this.render();
+        }
+
+        clear() {
+          this.visits = [];
+          this.save();
+          this.render();
+          this.setStatus("");
+        }
+
+        // Hapus kunjungan yang geofence-nya sudah dihapus, lalu gabungkan datanya.
+        resolve() {
+          const geofences = this.geofenceManager.geofences;
+          const before = this.visits.length;
+
+          this.visits = this.visits.filter((item) =>
+            geofences.some((geofence) => geofence.id === item.geofenceId)
+          );
+          if (this.visits.length !== before) {
+            this.save();
+          }
+
+          return this.visits.map((item) => ({
+            visit: item,
+            geofence: geofences.find((geofence) => geofence.id === item.geofenceId),
+          }));
+        }
+
+        render() {
+          const items = this.resolve();
+          this.countEl.innerText = items.length;
+
+          if (items.length === 0) {
+            this.listEl.innerHTML =
+              '<div class="geofence-empty">Belum ada geofence dalam daftar kunjungan.</div>';
+            return;
+          }
+
+          const escape = (value) => this.geofenceManager.escapeHtml(value);
+
+          this.listEl.innerHTML = items
+            .map(({ visit, geofence }, index) => {
+              const isFirst = index === 0;
+              const isLast = index === items.length - 1;
+              return `
+                <div class="geofence-item">
+                  <div class="d-flex justify-content-between align-items-center gap-3">
+                    <div>
+                      <span class="badge text-bg-danger me-2">${index + 1}</span>
+                      <span class="fw-semibold">${escape(geofence.name)}</span>
+                      <small class="helper-text ms-2">${this.geofenceManager.describeGeofence(geofence)}</small>
+                    </div>
+                    <div class="geofence-actions">
+                      <button class="btn btn-sm btn-outline-light" type="button" data-visit-action="up" data-visit-uid="${visit.uid}" ${isFirst ? "disabled" : ""}>&uarr;</button>
+                      <button class="btn btn-sm btn-outline-light" type="button" data-visit-action="down" data-visit-uid="${visit.uid}" ${isLast ? "disabled" : ""}>&darr;</button>
+                      <button class="btn btn-sm btn-outline-danger" type="button" data-visit-action="remove" data-visit-uid="${visit.uid}">Hapus</button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            })
+            .join("");
+        }
+
+        async buildRoute() {
+          const stops = [];
+
+          this.resolve().forEach(({ geofence }) => {
+            const center = this.geofenceManager.getCenter(geofence);
+            const previous = stops[stops.length - 1];
+
+            // lewati stop berurutan di titik yang sama
+            if (previous && previous.lat === center.lat && previous.lng === center.lng) {
+              return;
+            }
+
+            stops.push({ name: geofence.name, lat: center.lat, lng: center.lng });
+          });
+
+          if (stops.length < 2) {
+            throw new Error("Minimal 2 geofence berbeda di daftar kunjungan.");
+          }
+
+          this.buildBtn.disabled = true;
+          this.setStatus("Menghitung rute lewat OSRM...");
+
+          try {
+            const result = await this.mapManager.buildRouteThroughPoints(stops);
+            this.setStatus(
+              result.fallbackCount > 0
+                ? `Selesai, ${result.fallbackCount} segmen memakai garis lurus karena OSRM gagal.`
+                : `Selesai: ${stops.length} stop, ${result.pointCount} titik polyline.`
+            );
+          } finally {
+            this.buildBtn.disabled = false;
+          }
+        }
+      }
+
       class CoordinateTableManager {
         constructor(options) {
           this.resultContainer = options.resultContainer;
           this.inputs = options.inputs;
-
-          this.resultContainer.addEventListener("input", (event) => {
-            if (
-              event.target.classList.contains("speed-input") ||
-              event.target.classList.contains("temp1-input") ||
-              event.target.classList.contains("temp2-input")
-            ) {
-              this.handleTelemetryInputChange(event.target);
-            }
-
-            if (!event.target.classList.contains("stop-duration-input")) {
-              return;
-            }
-
-            const row = event.target.closest("tr");
-            if (row?.dataset.rowKind === "generated") {
-              return;
-            }
-
-            this.handleStopDurationChange(row);
-          });
+          this.stopDurationModalEl = document.getElementById("stopDurationModal");
+          this.stopDurationForm = document.getElementById("stopDurationForm");
+          this.stopDurationInput = document.getElementById("stopDurationInput");
+          this.stopDurationError = document.getElementById("stopDurationError");
+          this.stopDurationModal = new bootstrap.Modal(this.stopDurationModalEl);
+          this.pendingStopRow = null;
+          this.pendingStopSelect = null;
 
           this.resultContainer.addEventListener("change", (event) => {
-            if (event.target.classList.contains("stop-duration-input")) {
-              this.handleStopDurationChange(event.target.closest("tr"));
-              return;
-            }
-
             if (!event.target.classList.contains("set-select")) {
               return;
             }
 
             this.handleSetAction(event.target);
           });
+
+          this.stopDurationForm.addEventListener("submit", (event) => {
+            this.handleStopDurationSubmit(event);
+          });
+
+          this.stopDurationModalEl.addEventListener("shown.bs.modal", () => {
+            this.stopDurationInput.focus();
+            this.stopDurationInput.select();
+          });
+
+          this.stopDurationModalEl.addEventListener("hidden.bs.modal", () => {
+            this.resetStopModalState();
+          });
         }
 
         getNumericInput(key) {
-          return parseFloat(this.inputs[key].value);
+          return parseInt(this.inputs[key].value, 10);
         }
 
         getValidatedRanges() {
@@ -1300,10 +1744,9 @@
             maxTemp1: this.getNumericInput("maxTemp1"),
             minTemp2: this.getNumericInput("minTemp2"),
             maxTemp2: this.getNumericInput("maxTemp2"),
-            intervalTemperature: this.getNumericInput("intervalTemperature"),
-            intervalFuel: this.getNumericInput("intervalFuel"),
-            minFuel: this.getNumericInput("minFuel"),
-            maxFuel: this.getNumericInput("maxFuel"),
+            intervalFuel: parseFloat(this.inputs.intervalFuel.value),
+            minFuel: parseFloat(this.inputs.minFuel.value),
+            maxFuel: parseFloat(this.inputs.maxFuel.value),
           };
 
           if (Number.isNaN(ranges.second) || ranges.second < 0) {
@@ -1335,13 +1778,6 @@
           }
 
           if (
-            Number.isNaN(ranges.intervalTemperature) ||
-            ranges.intervalTemperature <= 0
-          ) {
-            throw new Error("Interval temperature tidak valid.");
-          }
-
-          if (
             Number.isNaN(ranges.minFuel) ||
             Number.isNaN(ranges.maxFuel) ||
             ranges.minFuel > ranges.maxFuel ||
@@ -1350,10 +1786,7 @@
             throw new Error("Range fuel tidak valid.");
           }
 
-          if (
-            Number.isNaN(ranges.intervalFuel) ||
-            ranges.intervalFuel <= 0
-          ) {
+          if (Number.isNaN(ranges.intervalFuel) || ranges.intervalFuel <= 0) {
             throw new Error("Interval fuel tidak valid.");
           }
 
@@ -1367,48 +1800,24 @@
 
           const ranges = this.getValidatedRanges();
           let interval = 0;
-          const speedSeries = this.buildSpeedSeries(
-            coordinates.length,
-            ranges.minSpeed,
-            ranges.maxSpeed
-          );
-          const temp1Series = this.buildTemperatureSeries(
-            coordinates.length,
-            ranges.minTemp1,
-            ranges.maxTemp1,
-            ranges.intervalTemperature
-          );
-          const temp2Series = this.buildTemperatureSeries(
-            coordinates.length,
-            ranges.minTemp2,
-            ranges.maxTemp2,
-            ranges.intervalTemperature
-          );
-          const fuelSeries = this.buildFuelSeries(
-            coordinates.length,
-            ranges.minFuel,
-            ranges.maxFuel,
-            ranges.intervalFuel
-          );
 
           const rows = coordinates
             .map((item, index) => {
               const lon = Number(item[0]);
               const lat = Number(item[1]);
-              const speed = speedSeries[index];
-              const fuel = fuelSeries[index];
+              const speed =
+                index === 0
+                  ? 0
+                  : this.randomBetween(ranges.minSpeed, ranges.maxSpeed);
               const acc = index === 0 ? 0 : 1;
               const currentSecond = index === 0 ? 0 : (interval += ranges.second);
+              const fuel =
+                Math.round(
+                  Math.min(ranges.maxFuel, ranges.minFuel + index * ranges.intervalFuel) * 100
+                ) / 100;
 
               return `
-                <tr
-                  data-row-kind="base"
-                  data-row-id="${this.createRowId()}"
-                  data-base-speed="${speed}"
-                  data-base-temp1="${temp1Series[index]}"
-                  data-base-temp2="${temp2Series[index]}"
-                  data-base-fuel="${fuel}"
-                >
+                <tr>
                   <td class="seq">${index + 1}</td>
                   <td class="no">${index + 1}</td>
                   <td><input type="number" class="form-control form-control-sm second-input" value="${currentSecond}"></td>
@@ -1416,7 +1825,6 @@
                   <td class="lon">${lon}</td>
                   <td class="sat">15</td>
                   <td><input type="number" class="form-control form-control-sm speed-input" value="${speed}"></td>
-                  <td><input type="number" class="form-control form-control-sm stop-duration-input" value="0" min="0" step="0.5"></td>
                   <td>
                     <select class="form-select form-select-sm acc-input">
                       <option value="1" ${acc === 1 ? "selected" : ""}>1</option>
@@ -1429,8 +1837,8 @@
                       <option value="0" ${acc === 0 ? "selected" : ""}>0</option>
                     </select>
                   </td>
-                  <td><input type="number" class="form-control form-control-sm temp1-input" value="${temp1Series[index]}"></td>
-                  <td><input type="number" class="form-control form-control-sm temp2-input" value="${temp2Series[index]}"></td>
+                  <td><input type="number" class="form-control form-control-sm temp1-input" value="${this.randomBetween(ranges.minTemp1, ranges.maxTemp1)}"></td>
+                  <td><input type="number" class="form-control form-control-sm temp2-input" value="${this.randomBetween(ranges.minTemp2, ranges.maxTemp2)}"></td>
                   <td><input type="number" step="0.1" class="form-control form-control-sm ultrasonic-input" value="${fuel}"></td>
                   <td>${this.buildActionSelect()}</td>
                 </tr>
@@ -1449,7 +1857,6 @@
                   <th>Longitude</th>
                   <th>Satellites</th>
                   <th>Speed</th>
-                  <th>Stop (min)</th>
                   <th>ACC</th>
                   <th>DIGITALINPUT2</th>
                   <th>DALLASTEMPERATURE1</th>
@@ -1463,12 +1870,14 @@
           `;
         }
 
-        buildActionSelect(disabled = false) {
+        buildActionSelect() {
           return `
-            <select class="form-select form-select-sm set-select" ${disabled ? "disabled" : ""}>
+            <select class="form-select form-select-sm set-select">
               <option value="">-- Pilih --</option>
-              <option value="duplicate">Duplicate</option>
-              <option value="delete">Delete</option>
+              <option value="duplicate">Duplikat</option>
+              <option value="delete">Hapus</option>
+              <option value="stop">Berhenti</option>
+              <option value="pause">Berhenti Sejenak</option>
             </select>
           `;
         }
@@ -1477,203 +1886,8 @@
           return Math.floor(Math.random() * (max - min + 1)) + min;
         }
 
-        clamp(value, min, max) {
-          return Math.min(max, Math.max(min, value));
-        }
-
-        buildSmoothSeries(length, min, max, options = {}) {
-          if (length <= 0) {
-            return [];
-          }
-
-          if (min === max) {
-            return Array.from({ length }, () => min);
-          }
-
-          const span = max - min;
-          const maxStep = Math.max(
-            1,
-            Math.min(
-              options.maxStep ?? Math.round(span * 0.18),
-              Math.max(1, Math.round(span * 0.35))
-            )
-          );
-          const targetShift = Math.max(
-            maxStep + 1,
-            options.targetShift ?? Math.round(span * 0.3)
-          );
-          const changeTargetEvery = Math.max(2, options.changeTargetEvery ?? 4);
-          const jitterLimit =
-            options.jitterLimit !== undefined
-              ? Math.max(0, options.jitterLimit)
-              : Math.max(0, Math.round(maxStep * 0.25));
-          let current = this.clamp(
-            options.startValue ?? this.randomBetween(min, max),
-            min,
-            max
-          );
-          let target = this.pickNearbyTarget(current, min, max, targetShift);
-
-          return Array.from({ length }, (_, index) => {
-            if (index === 0) {
-              return current;
-            }
-
-            if (
-              index % changeTargetEvery === 0 ||
-              Math.abs(target - current) <= Math.max(1, Math.floor(maxStep / 2))
-            ) {
-              target = this.pickNearbyTarget(current, min, max, targetShift);
-            }
-
-            const delta = target - current;
-            const direction = delta === 0 ? 0 : delta > 0 ? 1 : -1;
-            const step = Math.min(
-              Math.abs(delta),
-              this.randomBetween(1, maxStep)
-            );
-            const jitter =
-              jitterLimit === 0
-                ? 0
-                : this.randomBetween(-jitterLimit, jitterLimit);
-
-            current = this.clamp(current + direction * step + jitter, min, max);
-            return current;
-          });
-        }
-
-        handleTelemetryInputChange(inputEl) {
-          const row = inputEl.closest("tr");
-          if (!row || row.dataset.rowKind !== "base" || this.isStoppedBaseRow(row)) {
-            return;
-          }
-
-          if (inputEl.classList.contains("speed-input")) {
-            row.dataset.baseSpeed = inputEl.value || 0;
-            return;
-          }
-
-          if (inputEl.classList.contains("temp1-input")) {
-            row.dataset.baseTemp1 = inputEl.value || 0;
-            return;
-          }
-
-          if (inputEl.classList.contains("temp2-input")) {
-            row.dataset.baseTemp2 = inputEl.value || 0;
-            return;
-          }
-
-          if (inputEl.classList.contains("ultrasonic-input")) {
-            row.dataset.baseFuel = inputEl.value || 0;
-          }
-        }
-
-        buildSpeedSeries(length, min, max) {
-          if (length <= 0) {
-            return [];
-          }
-
-          if (length === 1) {
-            return [0];
-          }
-
-          const movingSeries = this.buildSmoothSeries(length - 1, min, max, {
-            startValue: min,
-            maxStep: Math.max(1, Math.round((max - min) * 0.16)),
-            targetShift: Math.max(2, Math.round((max - min) * 0.28)),
-            changeTargetEvery: 3,
-          });
-
-          return [0, ...movingSeries];
-        }
-
-        buildTemperatureSeries(length, min, max, interval) {
-          if (length <= 0) {
-            return [];
-          }
-
-          if (interval > 0) {
-            return Array.from({ length }, (_, index) =>
-              this.clamp(min + index * interval, min, max)
-            );
-          }
-
-          if (min === max) {
-            return Array.from({ length }, () => min);
-          }
-
-          const values = [];
-          let current = this.clamp(Math.round((min + max) / 2), min, max);
-          let target = this.randomFloat(min, max, 1);
-          const maxStep = Math.max(0.1, (max - min) / Math.max(length - 1, 1) * 0.4);
-
-          for (let index = 0; index < length; index++) {
-            if (index === 0) {
-              values.push(current);
-              continue;
-            }
-
-            if (Math.abs(target - current) < maxStep || this.randomBetween(0, 4) === 0) {
-              target = this.randomFloat(min, max, 1);
-            }
-
-            const delta = target - current;
-            const direction = delta === 0 ? 0 : delta > 0 ? 1 : -1;
-            const step = Math.min(Math.abs(delta), maxStep);
-            const staySame = this.randomBetween(0, 5) === 0;
-
-            current = staySame
-              ? current
-              : this.clamp(current + direction * step, min, max);
-            values.push(Math.round(current * 10) / 10);
-          }
-
-          return values;
-        }
-
-        randomFloat(min, max, precision = 1) {
-          const factor = 10 ** precision;
-          return Math.round((Math.random() * (max - min) + min) * factor) / factor;
-        }
-
-        buildFuelSeries(length, min, max, interval) {
-          if (length <= 0) {
-            return [];
-          }
-
-          if (interval > 0) {
-            return Array.from({ length }, (_, index) =>
-              Math.round(Math.min(max, min + index * interval) * 100) / 100
-            );
-          }
-
-          const result = [];
-          for (let index = 0; index < length; index++) {
-            const value = Math.min(max, min + index * 0.05);
-            result.push(Math.round(value * 100) / 100);
-          }
-
-          return result;
-        }
-
-        pickNearbyTarget(current, min, max, shift) {
-          const targetMin = this.clamp(current - shift, min, max);
-          const targetMax = this.clamp(current + shift, min, max);
-          return this.randomBetween(targetMin, targetMax);
-        }
-
         getRows() {
           return this.resultContainer.querySelectorAll("table tbody tr");
-        }
-
-        getBaseRows() {
-          return this.resultContainer.querySelectorAll(
-            'table tbody tr[data-row-kind="base"]'
-          );
-        }
-
-        createRowId() {
-          return `row-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
         }
 
         handleSetAction(selectEl) {
@@ -1688,517 +1902,165 @@
             this.duplicateRow(row);
           } else if (action === "delete") {
             this.deleteRow(row);
+          } else if (action === "stop" || action === "pause") {
+            this.openStopDurationModal(row, selectEl, action);
+            return;
           }
 
           selectEl.value = "";
         }
 
-        duplicateRow(row) {
-          const sourceRow = this.getManageableBaseRow(row);
-          if (!sourceRow) {
+        openStopDurationModal(row, selectEl, mode = "stop") {
+          this.pendingStopRow = row;
+          this.pendingStopSelect = selectEl;
+          this.pendingStopMode = mode;
+          this.stopDurationInput.value = "2";
+          this.stopDurationError.classList.add("d-none");
+          this.stopDurationModal.show();
+        }
+
+        handleStopDurationSubmit(event) {
+          event.preventDefault();
+
+          const stopDurationMinutes = parseInt(this.stopDurationInput.value, 10);
+          if (Number.isNaN(stopDurationMinutes) || stopDurationMinutes < 0) {
+            this.stopDurationError.classList.remove("d-none");
+            this.stopDurationInput.focus();
             return;
           }
 
-          const clone = sourceRow.cloneNode(true);
-          clone.dataset.rowKind = "base";
-          clone.dataset.rowId = this.createRowId();
-          clone.classList.remove("stop-row");
-          delete clone.dataset.originalSpeed;
-          delete clone.dataset.originalAcc;
-          delete clone.dataset.originalDigital;
-          clone.querySelector(".set-select").value = "";
-          clone.querySelector(".set-select").disabled = false;
-          clone.querySelector(".stop-duration-input").value = 0;
+          const stopDuration = stopDurationMinutes * 60;
 
-          const insertionPoint = this.getLastRowInStopBlock(sourceRow);
-          insertionPoint.parentNode.insertBefore(clone, insertionPoint.nextSibling);
+          if (this.pendingStopRow) {
+            this.stopRow(this.pendingStopRow, stopDuration, this.pendingStopMode);
+          }
+
+          if (this.pendingStopSelect) {
+            this.pendingStopSelect.value = "";
+          }
+
+          this.pendingStopRow = null;
+          this.pendingStopSelect = null;
+          this.pendingStopMode = "stop";
+          this.stopDurationModal.hide();
+        }
+
+        resetStopModalState() {
+          this.stopDurationForm.reset();
+          this.stopDurationInput.value = "2";
+          this.stopDurationError.classList.add("d-none");
+
+          if (this.pendingStopSelect) {
+            this.pendingStopSelect.value = "";
+          }
+
+          this.pendingStopRow = null;
+          this.pendingStopSelect = null;
+          this.pendingStopMode = "stop";
+        }
+
+        duplicateRow(row) {
+          const clone = row.cloneNode(true);
+          clone.querySelector(".set-select").value = "";
+          row.parentNode.insertBefore(clone, row.nextSibling);
 
           this.updateRowNumbers();
           this.recalculateSeconds();
-          this.rebuildMotionProfile();
         }
 
         deleteRow(row) {
-          const baseRow = this.getManageableBaseRow(row);
-          if (!baseRow) {
-            return;
-          }
-
-          if (this.getBaseRows().length <= 1) {
+          const tbody = row.parentNode;
+          if (tbody.querySelectorAll("tr").length <= 1) {
             alert("Minimal harus ada 1 baris!");
             return;
           }
 
-          this.removeGeneratedStopRows(baseRow);
-          baseRow.remove();
+          row.remove();
           this.updateRowNumbers();
           this.recalculateSeconds();
-          this.rebuildMotionProfile();
         }
 
-        handleStopDurationChange(row) {
-          this.handleStopDurationChangeInternal(row, true);
-        }
-
-        handleStopDurationChangeInternal(row, shouldRebuildMotionProfile) {
-          const baseRow = this.getManageableBaseRow(row);
-          if (!baseRow) {
-            return;
-          }
-
+        stopRow(row, stopDuration, mode = "stop") {
           const secondInterval = this.getNumericInput("second");
-          if (Number.isNaN(secondInterval) || secondInterval <= 0) {
-            alert("Second interval harus lebih dari 0 untuk membuat row berhenti.");
+          if (Number.isNaN(secondInterval)) {
+            alert("Second interval tidak valid!");
             return;
           }
 
-          const stopDurationInput = baseRow.querySelector(".stop-duration-input");
-          const stopDurationMinutes = parseFloat(stopDurationInput.value) || 0;
+          const tbody = row.parentNode;
+          const originalSecond =
+            parseInt(row.querySelector(".second-input").value, 10) || 0;
+          const seq = row.querySelector(".seq").innerText;
+          const lat = row.querySelector(".lat").innerText;
+          const lon = row.querySelector(".lon").innerText;
+          const sat = row.querySelector(".sat").innerText;
+          const temp1 = row.querySelector(".temp1-input").value;
+          const temp2 = row.querySelector(".temp2-input").value;
+          const fuel = row.querySelector(".ultrasonic-input").value;
+          const nextSibling = row.nextSibling;
 
-          if (stopDurationMinutes < 0) {
-            alert("Durasi stop tidak valid.");
-            stopDurationInput.value = 0;
-            return;
+          row.remove();
+
+          const isPause = mode === "pause";
+          const extraClass = isPause ? "pause-row" : "";
+
+          // "Berhenti": 2 baris. "Berhenti Sejenak": 3 baris (+ baris setelah interval), berwarna orange.
+          const stopRows = [
+            this.createStopRow(seq, originalSecond, lat, lon, 0, 1, sat, temp1, temp2, fuel, extraClass),
+            this.createStopRow(seq, originalSecond + stopDuration, lat, lon, 0, 0, sat, temp1, temp2, fuel, extraClass),
+          ];
+
+          if (isPause) {
+            stopRows.push(
+              this.createStopRow(seq, originalSecond + stopDuration + secondInterval, lat, lon, 0, 1, sat, temp1, temp2, fuel, extraClass)
+            );
           }
 
-          this.removeGeneratedStopRows(baseRow);
-
-          if (stopDurationMinutes === 0) {
-            this.clearStopState(baseRow);
-            this.updateRowNumbers();
-            this.recalculateSeconds();
-            if (shouldRebuildMotionProfile) {
-              this.rebuildMotionProfile();
+          stopRows.forEach((stopRow) => {
+            if (nextSibling) {
+              tbody.insertBefore(stopRow, nextSibling);
+            } else {
+              tbody.appendChild(stopRow);
             }
-            return;
-          }
-
-          this.applyStopStateToBaseRow(baseRow);
-          this.rebuildMotionProfile();
-
-          const totalStopSeconds = Math.round(stopDurationMinutes * 60);
-          const totalStopRowCount = Math.max(
-            1,
-            Math.ceil(totalStopSeconds / secondInterval)
-          );
-          const generatedRowCount = Math.max(0, totalStopRowCount - 1);
-          const secondStart =
-            parseInt(baseRow.querySelector(".second-input").value, 10) || 0;
-          const rowData = this.extractBaseRowData(baseRow);
-          let insertionPoint = baseRow;
-
-          for (let index = 1; index <= generatedRowCount; index++) {
-            const generatedRow = this.createGeneratedStopRow(
-              baseRow,
-              secondStart + index * secondInterval,
-              rowData,
-              stopDurationMinutes
-            );
-            insertionPoint.parentNode.insertBefore(
-              generatedRow,
-              insertionPoint.nextSibling
-            );
-            insertionPoint = generatedRow;
-          }
+          });
 
           this.updateRowNumbers();
           this.recalculateSeconds();
-
-          if (shouldRebuildMotionProfile) {
-            this.rebuildMotionProfile();
-          }
         }
 
-        applyStopStateToBaseRow(baseRow) {
-          if (!baseRow.dataset.originalSpeed) {
-            baseRow.dataset.originalSpeed =
-              baseRow.querySelector(".speed-input").value || 0;
-            baseRow.dataset.originalAcc =
-              baseRow.querySelector(".acc-input").value || 0;
-            baseRow.dataset.originalDigital =
-              baseRow.querySelector(".digital-input").value || 0;
-            baseRow.dataset.originalTemp1 =
-              baseRow.querySelector(".temp1-input").value || 0;
-            baseRow.dataset.originalTemp2 =
-              baseRow.querySelector(".temp2-input").value || 0;
-            baseRow.dataset.originalFuel =
-              baseRow.querySelector(".ultrasonic-input").value || 0;
-          }
-
-          baseRow.classList.add("stop-row");
-          baseRow.querySelector(".speed-input").value = 0;
-          baseRow.querySelector(".acc-input").value = "0";
-          baseRow.querySelector(".digital-input").value = "0";
-        }
-
-        clearStopState(baseRow) {
-          baseRow.classList.remove("stop-row");
-
-          if (baseRow.dataset.originalSpeed !== undefined) {
-            baseRow.querySelector(".speed-input").value =
-              baseRow.dataset.originalSpeed;
-          }
-
-          if (baseRow.dataset.originalAcc !== undefined) {
-            baseRow.querySelector(".acc-input").value =
-              baseRow.dataset.originalAcc;
-          }
-
-          if (baseRow.dataset.originalDigital !== undefined) {
-            baseRow.querySelector(".digital-input").value =
-              baseRow.dataset.originalDigital;
-          }
-
-          if (baseRow.dataset.originalTemp1 !== undefined) {
-            baseRow.querySelector(".temp1-input").value =
-              baseRow.dataset.originalTemp1;
-          }
-
-          if (baseRow.dataset.originalTemp2 !== undefined) {
-            baseRow.querySelector(".temp2-input").value =
-              baseRow.dataset.originalTemp2;
-          }
-
-          if (baseRow.dataset.originalFuel !== undefined) {
-            baseRow.querySelector(".ultrasonic-input").value =
-              baseRow.dataset.originalFuel;
-          }
-
-          delete baseRow.dataset.originalSpeed;
-          delete baseRow.dataset.originalAcc;
-          delete baseRow.dataset.originalDigital;
-          delete baseRow.dataset.originalTemp1;
-          delete baseRow.dataset.originalTemp2;
-          delete baseRow.dataset.originalFuel;
-        }
-
-        extractBaseRowData(row) {
-          return {
-            seq: row.querySelector(".seq").innerText,
-            lat: row.querySelector(".lat").innerText,
-            lon: row.querySelector(".lon").innerText,
-            sat: row.querySelector(".sat").innerText || 15,
-            acc: 0,
-            digital: 0,
-            temp1: row.querySelector(".temp1-input").value || 0,
-            temp2: row.querySelector(".temp2-input").value || 0,
-            ultrasonic: row.querySelector(".ultrasonic-input").value || 0,
-          };
-        }
-
-        createGeneratedStopRow(baseRow, secondValue, rowData, stopDurationMinutes) {
+        createStopRow(seqValue, secondValue, lat, lon, speed, acc, sat, temp1, temp2, fuel, extraClass = "") {
           const tr = document.createElement("tr");
           tr.classList.add("stop-row");
-          tr.dataset.rowKind = "generated";
-          tr.dataset.stopParentId = baseRow.dataset.rowId;
+          if (extraClass) {
+            tr.classList.add(extraClass);
+          }
           tr.innerHTML = `
-            <td class="seq">${rowData.seq}</td>
+            <td class="seq">${seqValue}</td>
             <td class="no"></td>
             <td><input type="number" class="form-control form-control-sm second-input" value="${secondValue}"></td>
-            <td class="lat">${rowData.lat}</td>
-            <td class="lon">${rowData.lon}</td>
-            <td class="sat">${rowData.sat}</td>
-            <td><input type="number" class="form-control form-control-sm speed-input" value="0"></td>
-            <td><input type="number" class="form-control form-control-sm stop-duration-input" value="${stopDurationMinutes}" min="0" step="0.5" readonly disabled></td>
+            <td class="lat">${lat}</td>
+            <td class="lon">${lon}</td>
+            <td class="sat">${sat || 15}</td>
+            <td><input type="number" class="form-control form-control-sm speed-input" value="${speed}"></td>
             <td>
               <select class="form-select form-select-sm acc-input">
-                <option value="1">1</option>
-                <option value="0" selected>0</option>
+                <option value="1" ${acc === 1 ? "selected" : ""}>1</option>
+                <option value="0" ${acc === 0 ? "selected" : ""}>0</option>
               </select>
             </td>
             <td>
               <select class="form-select form-select-sm digital-input">
-                <option value="1">1</option>
-                <option value="0" selected>0</option>
+                <option value="1" ${acc === 1 ? "selected" : ""}>1</option>
+                <option value="0" ${acc === 0 ? "selected" : ""}>0</option>
               </select>
             </td>
-            <td><input type="number" class="form-control form-control-sm temp1-input" value="${rowData.temp1}"></td>
-            <td><input type="number" class="form-control form-control-sm temp2-input" value="${rowData.temp2}"></td>
-            <td><input type="number" step="0.1" class="form-control form-control-sm ultrasonic-input" value="${rowData.ultrasonic}"></td>
-            <td>${this.buildActionSelect(true)}</td>
+            <td><input type="number" class="form-control form-control-sm temp1-input" value="${temp1 || 0}"></td>
+            <td><input type="number" class="form-control form-control-sm temp2-input" value="${temp2 || 0}"></td>
+            <td><input type="number" step="0.1" class="form-control form-control-sm ultrasonic-input" value="${fuel || 0}"></td>
+            <td>${this.buildActionSelect()}</td>
           `;
 
           return tr;
-        }
-
-        getManageableBaseRow(row) {
-          if (!row) {
-            return null;
-          }
-
-          if (row.dataset.rowKind === "base") {
-            return row;
-          }
-
-          if (row.dataset.stopParentId) {
-            return this.resultContainer.querySelector(
-              `tr[data-row-id="${row.dataset.stopParentId}"]`
-            );
-          }
-
-          return row;
-        }
-
-        getLastRowInStopBlock(baseRow) {
-          const generatedRows = this.getGeneratedRowsForBase(baseRow);
-          return generatedRows.length > 0
-            ? generatedRows[generatedRows.length - 1]
-            : baseRow;
-        }
-
-        getGeneratedRowsForBase(baseRow) {
-          return Array.from(
-            this.resultContainer.querySelectorAll(
-              `tr[data-stop-parent-id="${baseRow.dataset.rowId}"]`
-            )
-          );
-        }
-
-        removeGeneratedStopRows(baseRow) {
-          this.getGeneratedRowsForBase(baseRow).forEach((row) => row.remove());
-        }
-
-        ensureTelemetrySnapshot(row) {
-          if (row.dataset.baseSpeed === undefined) {
-            row.dataset.baseSpeed =
-              row.querySelector(".speed-input").value || 0;
-          }
-
-          if (row.dataset.baseTemp1 === undefined) {
-            row.dataset.baseTemp1 =
-              row.querySelector(".temp1-input").value || 0;
-          }
-
-          if (row.dataset.baseTemp2 === undefined) {
-            row.dataset.baseTemp2 =
-              row.querySelector(".temp2-input").value || 0;
-          }
-
-          if (row.dataset.baseFuel === undefined) {
-            row.dataset.baseFuel =
-              row.querySelector(".ultrasonic-input").value || 0;
-          }
-        }
-
-        getSnapshotNumber(row, key, selector) {
-          this.ensureTelemetrySnapshot(row);
-          const snapshotValue = parseFloat(row.dataset[key]);
-
-          if (!Number.isNaN(snapshotValue)) {
-            return snapshotValue;
-          }
-
-          return parseFloat(row.querySelector(selector).value) || 0;
-        }
-
-        setTelemetryValue(row, selector, value) {
-          const element = row.querySelector(selector);
-          const rounded = Number.isFinite(value) ? Math.round(value * 10) / 10 : value;
-          element.value = rounded;
-        }
-
-        isStoppedBaseRow(row) {
-          return (parseFloat(row.querySelector(".stop-duration-input").value) || 0) > 0;
-        }
-
-        buildTransitionValues(length, startValue, endValue, jitterLimit = 1) {
-          if (length <= 0) {
-            return [];
-          }
-
-          return Array.from({ length }, (_, index) => {
-            const progress = (index + 1) / (length + 1);
-            const interpolated =
-              startValue + (endValue - startValue) * progress;
-            const jitter =
-              jitterLimit > 0
-                ? this.randomBetween(-jitterLimit, jitterLimit)
-                : 0;
-            return Math.round(interpolated + jitter);
-          });
-        }
-
-        applyTransitionWindow(rows, startIndex, endIndex, fromValues, toValues, ranges) {
-          const segmentLength = endIndex - startIndex + 1;
-          if (segmentLength <= 0) {
-            return;
-          }
-
-          const speedValues = this.buildTransitionValues(
-            segmentLength,
-            fromValues.speed,
-            toValues.speed,
-            1
-          );
-          const temp1Values = this.buildTransitionValues(
-            segmentLength,
-            fromValues.temp1,
-            toValues.temp1,
-            0
-          );
-          const temp2Values = this.buildTransitionValues(
-            segmentLength,
-            fromValues.temp2,
-            toValues.temp2,
-            0
-          );
-
-          for (let index = 0; index < segmentLength; index++) {
-            const row = rows[startIndex + index];
-            this.setTelemetryValue(
-              row,
-              ".speed-input",
-              this.clamp(speedValues[index], 0, ranges.maxSpeed)
-            );
-            this.setTelemetryValue(
-              row,
-              ".temp1-input",
-              this.clamp(temp1Values[index], ranges.minTemp1, ranges.maxTemp1)
-            );
-            this.setTelemetryValue(
-              row,
-              ".temp2-input",
-              this.clamp(temp2Values[index], ranges.minTemp2, ranges.maxTemp2)
-            );
-          }
-        }
-
-        syncGeneratedStopTelemetry(baseRow) {
-          const speedValue = 0;
-          const temp1Value = baseRow.querySelector(".temp1-input").value || 0;
-          const temp2Value = baseRow.querySelector(".temp2-input").value || 0;
-          const fuelValue = baseRow.querySelector(".ultrasonic-input").value || 0;
-
-          this.getGeneratedRowsForBase(baseRow).forEach((row) => {
-            row.querySelector(".speed-input").value = speedValue;
-            row.querySelector(".temp1-input").value = temp1Value;
-            row.querySelector(".temp2-input").value = temp2Value;
-            row.querySelector(".ultrasonic-input").value = fuelValue;
-          });
-        }
-
-        rebuildMotionProfile() {
-          let ranges;
-
-          try {
-            ranges = this.getValidatedRanges();
-          } catch (error) {
-            return;
-          }
-
-          const baseRows = Array.from(this.getBaseRows());
-          if (baseRows.length === 0) {
-            return;
-          }
-
-          baseRows.forEach((row, index) => {
-            this.ensureTelemetrySnapshot(row);
-            this.setTelemetryValue(
-              row,
-              ".speed-input",
-              index === 0
-                ? 0
-                : this.getSnapshotNumber(row, "baseSpeed", ".speed-input")
-            );
-            this.setTelemetryValue(
-              row,
-              ".temp1-input",
-              this.getSnapshotNumber(row, "baseTemp1", ".temp1-input")
-            );
-            this.setTelemetryValue(
-              row,
-              ".temp2-input",
-              this.getSnapshotNumber(row, "baseTemp2", ".temp2-input")
-            );
-          this.setTelemetryValue(
-              row,
-              ".ultrasonic-input",
-              this.getSnapshotNumber(row, "baseFuel", ".ultrasonic-input")
-            );
-          });
-
-          const transitionWindow = 5;
-
-          baseRows.forEach((stopRow, stopIndex) => {
-            if (!this.isStoppedBaseRow(stopRow)) {
-              return;
-            }
-
-            const stopTemp1Base = this.getSnapshotNumber(
-              stopRow,
-              "baseTemp1",
-              ".temp1-input"
-            );
-            const stopTemp2Base = this.getSnapshotNumber(
-              stopRow,
-              "baseTemp2",
-              ".temp2-input"
-            );
-            const stopTemp1 = this.clamp(
-              stopTemp1Base - Math.max(1, Math.round((ranges.maxTemp1 - ranges.minTemp1) * 0.05)),
-              ranges.minTemp1,
-              ranges.maxTemp1
-            );
-            const stopTemp2 = this.clamp(
-              stopTemp2Base - Math.max(1, Math.round((ranges.maxTemp2 - ranges.minTemp2) * 0.05)),
-              ranges.minTemp2,
-              ranges.maxTemp2
-            );
-
-            this.setTelemetryValue(stopRow, ".speed-input", 0);
-            this.setTelemetryValue(stopRow, ".temp1-input", stopTemp1);
-            this.setTelemetryValue(stopRow, ".temp2-input", stopTemp2);
-
-            const beforeStart = Math.max(0, stopIndex - transitionWindow);
-            const beforeEnd = stopIndex - 1;
-            const afterStart = stopIndex + 1;
-            const afterEnd = Math.min(baseRows.length - 1, stopIndex + transitionWindow);
-
-            if (beforeStart <= beforeEnd) {
-              const startRow = baseRows[beforeStart];
-              this.applyTransitionWindow(
-                baseRows,
-                beforeStart,
-                beforeEnd,
-                {
-                  speed:
-                    beforeStart === 0
-                      ? 0
-                      : this.getSnapshotNumber(startRow, "baseSpeed", ".speed-input"),
-                  temp1: this.getSnapshotNumber(startRow, "baseTemp1", ".temp1-input"),
-                  temp2: this.getSnapshotNumber(startRow, "baseTemp2", ".temp2-input"),
-                },
-                {
-                  speed: 0,
-                  temp1: stopTemp1,
-                  temp2: stopTemp2,
-                },
-                ranges
-              );
-            }
-
-            if (afterStart <= afterEnd) {
-              const endRow = baseRows[afterEnd];
-              this.applyTransitionWindow(
-                baseRows,
-                afterStart,
-                afterEnd,
-                {
-                  speed: 0,
-                  temp1: stopTemp1,
-                  temp2: stopTemp2,
-                },
-                {
-                  speed: this.getSnapshotNumber(endRow, "baseSpeed", ".speed-input"),
-                  temp1: this.getSnapshotNumber(endRow, "baseTemp1", ".temp1-input"),
-                  temp2: this.getSnapshotNumber(endRow, "baseTemp2", ".temp2-input"),
-                },
-                ranges
-              );
-            }
-
-            this.syncGeneratedStopTelemetry(stopRow);
-          });
         }
 
         updateRowNumbers() {
@@ -2218,6 +2080,11 @@
           this.getRows().forEach((row) => {
             const secondInput = row.querySelector(".second-input");
 
+            if (row.classList.contains("stop-row")) {
+              lastSecond = parseInt(secondInput.value, 10);
+              return;
+            }
+
             if (lastSecond === null) {
               lastSecond = parseInt(secondInput.value, 10) || 0;
               secondInput.value = lastSecond;
@@ -2236,36 +2103,16 @@
             return;
           }
 
-          this.syncAllStopBlocks();
-
           this.getRows().forEach((row, index) => {
             row.querySelector(".second-input").value = index === 0 ? 0 : interval * index;
           });
         }
 
-        syncAllStopBlocks() {
-          this.getBaseRows().forEach((baseRow) => {
-            this.handleStopDurationChangeInternal(baseRow, false);
-          });
-          this.rebuildMotionProfile();
-        }
-
         exportToTxt(plateValue) {
-          const { blob, fileName } = this.buildTxtFile(plateValue);
-          const url = URL.createObjectURL(blob);
-          const anchor = document.createElement("a");
-
-          anchor.href = url;
-          anchor.download = fileName;
-          anchor.click();
-
-          URL.revokeObjectURL(url);
-        }
-
-        buildTxtFile(plateValue) {
           const rows = this.getRows();
           if (rows.length === 0) {
-            throw new Error("Tidak ada data TXT yang bisa diproses.");
+            alert("Tidak ada data untuk diexport!");
+            return;
           }
 
           const plateSafe =
@@ -2291,65 +2138,15 @@
             content += `${second},${lon},${lat},${sat},${speed},${acc},${digital},${fuel},${temp1},${temp2}\n`;
           });
 
-          return {
-            content,
-            fileName: `RUN-${plateSafe}.txt`,
-            blob: new Blob([content], { type: "text/plain" }),
-          };
-        }
+          const blob = new Blob([content], { type: "text/plain" });
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement("a");
 
-        async uploadToScenarioApi(plateValue, apiKey) {
-          const trimmedApiKey = apiKey.trim();
-          if (!trimmedApiKey) {
-            throw new Error("X-API-Key wajib diisi.");
-          }
+          anchor.href = url;
+          anchor.download = `RUN-${plateSafe}.txt`;
+          anchor.click();
 
-          const { blob, fileName } = this.buildTxtFile(plateValue);
-          const formData = new FormData();
-          formData.append("file", new File([blob], fileName, { type: "text/plain" }));
-
-          let response;
-          try {
-            response = await fetch(
-              "https://api-staging.mceasy.cloud/kernel/api/v1/scenario/upload_file",
-              {
-                method: "POST",
-                headers: {
-                  accept: "application/json",
-                  "X-API-Key": trimmedApiKey,
-                },
-                body: formData,
-              }
-            );
-          } catch (error) {
-            throw new Error("Gagal menghubungi API upload.");
-          }
-
-          const rawText = await response.text();
-          let payload = null;
-
-          try {
-            payload = rawText ? JSON.parse(rawText) : null;
-          } catch (error) {
-            payload = rawText;
-          }
-
-          if (!response.ok) {
-            const message =
-              typeof payload === "string"
-                ? payload
-                : payload?.message || payload?.detail || "Upload API gagal.";
-            throw new Error(message);
-          }
-
-          return {
-            fileName,
-            payload,
-          };
-        }
-
-        clearTable() {
-          this.resultContainer.innerHTML = "";
+          URL.revokeObjectURL(url);
         }
       }
 
@@ -2365,7 +2162,6 @@
             maxTemp1: document.getElementById("maxTemp1"),
             minTemp2: document.getElementById("minTemp2"),
             maxTemp2: document.getElementById("maxTemp2"),
-            intervalTemperature: document.getElementById("intervalTemperature"),
             intervalFuel: document.getElementById("intervalFuel"),
             minFuel: document.getElementById("minFuel"),
             maxFuel: document.getElementById("maxFuel"),
@@ -2380,16 +2176,17 @@
             geofenceList: document.getElementById("geofenceList"),
             geofenceCount: document.getElementById("geofenceCount"),
             geofenceMode: document.getElementById("geofenceMode"),
+            visitList: document.getElementById("visitList"),
+            visitCount: document.getElementById("visitCount"),
+            visitStatus: document.getElementById("visitStatus"),
+            buildRouteBtn: document.getElementById("buildRouteBtn"),
+            clearVisitBtn: document.getElementById("clearVisitBtn"),
             loadGeoJsonBtn: document.getElementById("loadGeoJsonBtn"),
             clearPolylineBtn: document.getElementById("clearPolylineBtn"),
             saveGeofenceBtn: document.getElementById("saveGeofenceBtn"),
             resetGeofenceBtn: document.getElementById("resetGeofenceBtn"),
             regenerateSecondBtn: document.getElementById("regenerateSecondBtn"),
             convertTableBtn: document.getElementById("convertTableBtn"),
-            clearTableBtn: document.getElementById("clearTableBtn"),
-            apiKeyInput: document.getElementById("apiKeyInput"),
-            uploadApiBtn: document.getElementById("uploadApiBtn"),
-            apiUploadStatus: document.getElementById("apiUploadStatus"),
             exportTxtBtn: document.getElementById("exportTxtBtn"),
           };
 
@@ -2416,8 +2213,21 @@
             listEl: this.elements.geofenceList,
             countEl: this.elements.geofenceCount,
             modeEl: this.elements.geofenceMode,
+            onAddVisit: (geofenceId) => this.visitPlanManager.add(geofenceId),
           });
           this.geofenceManager.bindListEvents();
+
+          this.visitPlanManager = new VisitPlanManager({
+            geofenceManager: this.geofenceManager,
+            mapManager: this.mapManager,
+            listEl: this.elements.visitList,
+            countEl: this.elements.visitCount,
+            statusEl: this.elements.visitStatus,
+            buildBtn: this.elements.buildRouteBtn,
+            clearBtn: this.elements.clearVisitBtn,
+          });
+          // sinkronkan daftar kunjungan saat geofence diubah/dihapus
+          this.geofenceManager.onChange = () => this.visitPlanManager.render();
 
           this.bindEvents();
         }
@@ -2451,50 +2261,9 @@
             });
           });
 
-          this.elements.clearTableBtn.addEventListener("click", () => {
-            this.tableManager.clearTable();
-            this.setApiStatus("");
-          });
-
-          this.elements.uploadApiBtn.addEventListener("click", async () => {
-            this.setApiStatus("Uploading TXT ke API...");
-            this.elements.uploadApiBtn.disabled = true;
-
-            try {
-              const result = await this.tableManager.uploadToScenarioApi(
-                this.elements.licensePlate.value,
-                this.elements.apiKeyInput.value
-              );
-              this.setApiStatus(`Upload berhasil: ${result.fileName}`, "success");
-            } catch (error) {
-              this.setApiStatus(error.message, "error");
-            } finally {
-              this.elements.uploadApiBtn.disabled = false;
-            }
-          });
-
           this.elements.exportTxtBtn.addEventListener("click", () => {
-            this.runSafely(() => {
-              this.tableManager.exportToTxt(this.elements.licensePlate.value);
-            });
+            this.tableManager.exportToTxt(this.elements.licensePlate.value);
           });
-        }
-
-        setApiStatus(message, tone = "muted") {
-          this.elements.apiUploadStatus.textContent = message;
-          this.elements.apiUploadStatus.className = "small mt-2";
-
-          if (tone === "success") {
-            this.elements.apiUploadStatus.classList.add("text-success");
-            return;
-          }
-
-          if (tone === "error") {
-            this.elements.apiUploadStatus.classList.add("text-danger");
-            return;
-          }
-
-          this.elements.apiUploadStatus.classList.add("text-secondary");
         }
 
         runSafely(action) {
