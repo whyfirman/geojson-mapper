@@ -548,6 +548,17 @@
                 <div id="visitList" class="geofence-list"></div>
 
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                  <div class="input-group" style="width: 270px">
+                    <span class="input-group-text">Maks jarak titik</span>
+                    <input
+                      type="number"
+                      id="routeMaxSpacing"
+                      class="form-control"
+                      value="50"
+                      min="0"
+                    />
+                    <span class="input-group-text">m</span>
+                  </div>
                   <button class="btn btn-warning" id="buildRouteBtn" type="button">
                     Buat Polyline via OSRM
                   </button>
@@ -987,6 +998,32 @@
             }
 
             latLngs.push(...(latLngs.length ? segment.slice(1) : segment));
+          }
+
+          // Sisipkan titik di segmen panjang agar jarak antar titik <= maxSpacing
+          // (0 = nonaktif), supaya jalan lurus panjang tidak hanya 1-2 titik.
+          const maxSpacing = Number(
+            document.getElementById("routeMaxSpacing")?.value
+          );
+          if (maxSpacing > 0) {
+            const dense = [latLngs[0]];
+            for (let i = 1; i < latLngs.length; i++) {
+              const from = latLngs[i - 1];
+              const to = latLngs[i];
+              const parts = Math.ceil(from.distanceTo(to) / maxSpacing);
+              for (let k = 1; k < parts; k++) {
+                const t = k / parts;
+                dense.push(
+                  L.latLng(
+                    from.lat + (to.lat - from.lat) * t,
+                    from.lng + (to.lng - from.lng) * t
+                  )
+                );
+              }
+              dense.push(to);
+            }
+            latLngs.length = 0;
+            latLngs.push(...dense);
           }
 
           this.drawnItems.clearLayers();
